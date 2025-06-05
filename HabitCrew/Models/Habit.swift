@@ -82,3 +82,38 @@ struct Habit: Codable {
         }
     }
 }
+
+extension Habit {
+    // Check if habit should be completed today based on frequency
+    func shouldCompleteToday() -> Bool {
+        let calendar = Calendar.current
+        let today = calendar.component(.weekday, from: Date()) // 1 = Sunday, 2 = Monday, etc.
+        
+        switch frequency {
+        case .daily:
+            // Daily habits should be completed every day
+            return true
+            
+        case .weekly:
+            // Weekly habits - check if today is the same day of week as when the habit was created
+            let startWeekday = calendar.component(.weekday, from: startDate)
+            return today == startWeekday
+            
+        case .monthly:
+            // Monthly habits - check if today is the same day of month as when the habit was created
+            let startDay = calendar.component(.day, from: startDate)
+            let currentDay = calendar.component(.day, from: Date())
+            return currentDay == startDay
+            
+        case .custom:
+            // For custom frequency, since we don't have customDays property,
+            // We'll assume custom means specific days were selected elsewhere
+            // For now, default to returning true (needs completion today)
+            return true
+            
+        default:
+            // Default behavior for any other frequencies
+            return true
+        }
+    }
+}

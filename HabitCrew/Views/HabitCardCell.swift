@@ -4,6 +4,7 @@ class HabitCardCell: UICollectionViewCell {
     
     // UI Components
     private let containerView = UIView()
+    private let iconContainer = UIView()
     private let iconImageView = UIImageView()
     private let titleLabel = UILabel()
     private let progressView = UIProgressView()
@@ -34,10 +35,6 @@ class HabitCardCell: UICollectionViewCell {
         progressLabel.text = nil
         iconImageView.image = nil
         progressView.progress = 0
-        
-        // Reset container appearance
-        containerView.backgroundColor = .systemBackground
-        containerView.layer.borderColor = UIColor.systemGray4.cgColor
     }
     
     private func setupUI() {
@@ -45,34 +42,36 @@ class HabitCardCell: UICollectionViewCell {
         
         // Container View
         containerView.translatesAutoresizingMaskIntoConstraints = false
-        containerView.backgroundColor = .systemBackground
+        containerView.backgroundColor = .white
         containerView.layer.cornerRadius = 16
         containerView.layer.shadowColor = UIColor.black.cgColor
-        containerView.layer.shadowOffset = CGSize(width: 0, height: 3)
+        containerView.layer.shadowOffset = CGSize(width: 0, height: 2)
         containerView.layer.shadowRadius = 6
-        containerView.layer.shadowOpacity = 0.12
+        containerView.layer.shadowOpacity = 0.08
         contentView.addSubview(containerView)
+        
+        // Icon Container
+        iconContainer.translatesAutoresizingMaskIntoConstraints = false
+        iconContainer.layer.cornerRadius = 18
+        iconContainer.layer.masksToBounds = true
+        containerView.addSubview(iconContainer)
         
         // Icon Image View
         iconImageView.translatesAutoresizingMaskIntoConstraints = false
         iconImageView.contentMode = .scaleAspectFit
-        iconImageView.tintColor = .systemBlue
-        iconImageView.backgroundColor = .systemGray6
-        iconImageView.layer.cornerRadius = 18
-        iconImageView.layer.masksToBounds = true
-        containerView.addSubview(iconImageView)
+        iconImageView.tintColor = .white
+        iconContainer.addSubview(iconImageView)
         
         // Title Label
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.font = UIFont.systemFont(ofSize: 16, weight: .medium)
-        titleLabel.textColor = .label
+        titleLabel.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        titleLabel.textColor = .black
         titleLabel.numberOfLines = 2
         containerView.addSubview(titleLabel)
         
         // Progress View
         progressView.translatesAutoresizingMaskIntoConstraints = false
-        progressView.trackTintColor = .systemGray5
-        progressView.progressTintColor = .systemBlue
+        progressView.trackTintColor = .systemGray6
         progressView.layer.cornerRadius = 2
         progressView.clipsToBounds = true
         containerView.addSubview(progressView)
@@ -80,7 +79,7 @@ class HabitCardCell: UICollectionViewCell {
         // Progress Label
         progressLabel.translatesAutoresizingMaskIntoConstraints = false
         progressLabel.font = UIFont.systemFont(ofSize: 12)
-        progressLabel.textColor = .secondaryLabel
+        progressLabel.textColor = .systemGray
         containerView.addSubview(progressLabel)
         
         // Layout Constraints
@@ -90,12 +89,17 @@ class HabitCardCell: UICollectionViewCell {
             containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             
-            iconImageView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 16),
-            iconImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 16),
-            iconImageView.widthAnchor.constraint(equalToConstant: 36),
-            iconImageView.heightAnchor.constraint(equalToConstant: 36),
+            iconContainer.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 16),
+            iconContainer.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 16),
+            iconContainer.widthAnchor.constraint(equalToConstant: 36),
+            iconContainer.heightAnchor.constraint(equalToConstant: 36),
             
-            titleLabel.topAnchor.constraint(equalTo: iconImageView.bottomAnchor, constant: 12),
+            iconImageView.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
+            iconImageView.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
+            iconImageView.widthAnchor.constraint(equalToConstant: 20),
+            iconImageView.heightAnchor.constraint(equalToConstant: 20),
+            
+            titleLabel.topAnchor.constraint(equalTo: iconContainer.bottomAnchor, constant: 12),
             titleLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 16),
             titleLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -16),
             
@@ -110,8 +114,6 @@ class HabitCardCell: UICollectionViewCell {
             progressLabel.bottomAnchor.constraint(lessThanOrEqualTo: containerView.bottomAnchor, constant: -16)
         ])
     }
-    
-    // MARK: - Missing methods that need to be added
     
     func showSkeleton() {
         // Create and add skeleton layers
@@ -155,7 +157,6 @@ class HabitCardCell: UICollectionViewCell {
         }
     }
     
-    // Only updating the configure method
     func configure(with habit: Habit) {
         titleLabel.text = habit.title
         
@@ -173,11 +174,8 @@ class HabitCardCell: UICollectionViewCell {
         
         // Set icon and color
         iconImageView.image = UIImage(systemName: habit.icon)
-        
-        // Use our helper for color
         let themeColor = ColorHelper.color(fromHex: habit.color)
-        iconImageView.backgroundColor = themeColor.withAlphaComponent(0.15)
-        iconImageView.tintColor = themeColor
+        iconContainer.backgroundColor = themeColor
         progressView.progressTintColor = themeColor
     }
 }

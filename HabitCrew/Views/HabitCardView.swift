@@ -28,18 +28,17 @@ class HabitCardView: UIView {
     private func setupUI() {
         // Container View
         containerView.translatesAutoresizingMaskIntoConstraints = false
-        containerView.backgroundColor = .systemBackground
+        containerView.backgroundColor = .white
         containerView.layer.cornerRadius = 16
         containerView.layer.shadowColor = UIColor.black.cgColor
-        containerView.layer.shadowOffset = CGSize(width: 0, height: 3)
-        containerView.layer.shadowRadius = 6
-        containerView.layer.shadowOpacity = 0.12
+        containerView.layer.shadowOffset = CGSize(width: 0, height: 2)
+        containerView.layer.shadowRadius = 5
+        containerView.layer.shadowOpacity = 0.05
         addSubview(containerView)
         
         // Icon Container
         iconContainer.translatesAutoresizingMaskIntoConstraints = false
         iconContainer.layer.cornerRadius = 20
-        iconContainer.layer.masksToBounds = true
         containerView.addSubview(iconContainer)
         
         // Icon Image View
@@ -57,12 +56,11 @@ class HabitCardView: UIView {
         // Streak Label
         streakLabel.translatesAutoresizingMaskIntoConstraints = false
         streakLabel.font = UIFont.systemFont(ofSize: 13)
-        streakLabel.textColor = .secondaryLabel
+        streakLabel.textColor = .systemGray
         containerView.addSubview(streakLabel)
         
         // Complete Button
         completeButton.translatesAutoresizingMaskIntoConstraints = false
-        completeButton.tintColor = .systemBlue
         completeButton.addTarget(self, action: #selector(completeButtonTapped), for: .touchUpInside)
         containerView.addSubview(completeButton)
         
@@ -89,12 +87,12 @@ class HabitCardView: UIView {
             
             streakLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
             streakLabel.leadingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 16),
-            streakLabel.bottomAnchor.constraint(lessThanOrEqualTo: containerView.bottomAnchor, constant: -16),
+            streakLabel.trailingAnchor.constraint(equalTo: completeButton.leadingAnchor, constant: -16),
             
             completeButton.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
             completeButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -16),
-            completeButton.widthAnchor.constraint(equalToConstant: 40),
-            completeButton.heightAnchor.constraint(equalToConstant: 40)
+            completeButton.widthAnchor.constraint(equalToConstant: 32),
+            completeButton.heightAnchor.constraint(equalToConstant: 32)
         ])
         
         // Configure with habit data
@@ -114,11 +112,10 @@ class HabitCardView: UIView {
         
         // Configure button
         let isCompleted = habit.isCompletedToday()
-        completeButton.setImage(
-            UIImage(systemName: isCompleted ? "checkmark.circle.fill" : "circle"),
-            for: .normal
-        )
-        completeButton.tintColor = isCompleted ? .systemGreen : .systemGray2
+        let config = UIImage.SymbolConfiguration(pointSize: 25, weight: .regular)
+        let image = UIImage(systemName: isCompleted ? "checkmark.circle.fill" : "circle", withConfiguration: config)
+        completeButton.setImage(image, for: .normal)
+        completeButton.tintColor = isCompleted ? .systemGreen : .systemGray3
     }
     
     @objc private func completeButtonTapped() {
