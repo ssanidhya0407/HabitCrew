@@ -117,3 +117,40 @@ extension Habit {
         }
     }
 }
+
+
+import Foundation
+
+extension Habit {
+    /// Number of completions for the current period (today, this week, this month, or custom logic).
+    var progress: Int {
+        switch frequency {
+        case .daily:
+            // 1 if completed today, 0 otherwise
+            return isCompletedToday() ? 1 : 0
+        case .weekly:
+            // Count completions in this week (Monday-Sunday)
+            let calendar = Calendar.current
+            guard let weekInterval = calendar.dateInterval(of: .weekOfYear, for: Date()) else { return 0 }
+            return completedDates.filter { weekInterval.contains($0) }.count
+        case .monthly:
+            // Count completions this month
+            let calendar = Calendar.current
+            guard let monthInterval = calendar.dateInterval(of: .month, for: Date()) else { return 0 }
+            return completedDates.filter { monthInterval.contains($0) }.count
+        case .custom:
+            // For now, treat as daily (custom logic can go here)
+            return isCompletedToday() ? 1 : 0
+        }
+    }
+
+    /// The required completions for the current period (daily=1, weekly=1, monthly=1, custom=1 by default).
+    var total: Int {
+        switch frequency {
+        case .daily: return 1
+        case .weekly: return 1 // If you want to require eg. 3 times a week, change this logic.
+        case .monthly: return 1
+        case .custom: return 1 // Or customize per your app logic
+        }
+    }
+}
