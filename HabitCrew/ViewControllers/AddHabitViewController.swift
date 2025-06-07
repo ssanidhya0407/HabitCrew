@@ -1,453 +1,238 @@
 import UIKit
 
-protocol AddHabitViewControllerDelegate: AnyObject {
-    func didAddHabit()
-}
-
 class AddHabitViewController: UIViewController {
-    
-    // UI Components
-    private let scrollView = UIScrollView()
-    private let contentView = UIView()
+    // MARK: - UI Elements
     private let headerView = UIView()
     private let titleLabel = UILabel()
     private let closeButton = UIButton(type: .system)
-    private let habitTitleTextField = ModernTextField(placeholder: "Habit Title")
-    private let habitDescriptionTextField = ModernTextField(placeholder: "Description (optional)")
-    private let frequencyLabel = UILabel()
-    private let frequencySegmentedControl = UISegmentedControl(items: ["Daily", "Weekly", "Monthly", "Custom"])
-    private var customFrequencyData: (days: [Int], times: [Date], reminderEnabled: Bool)?
-    private let colorLabel = UILabel()
-    private let colorCollectionView: UICollectionView = {
-        let layout = UICollectionViewFlowLayout()
-        layout.scrollDirection = .horizontal
-        layout.itemSize = CGSize(width: 40, height: 40)
-        layout.minimumLineSpacing = 12
-        return UICollectionView(frame: .zero, collectionViewLayout: layout)
-    }()
-    private let iconLabel = UILabel()
-    private let iconCollectionView: UICollectionView = {
-        let layout = UICollectionViewFlowLayout()
-        layout.scrollDirection = .horizontal
-        layout.itemSize = CGSize(width: 40, height: 40)
-        layout.minimumLineSpacing = 12
-        return UICollectionView(frame: .zero, collectionViewLayout: layout)
-    }()
-    private let buddiesLabel = UILabel()
-    private let buddiesButton = UIButton(type: .system)
-    private let createButton = UIButton(type: .system)
-    
-    // Data
-    private let colors = [
-        "#FF6B6B", "#4ECDC4", "#FFE66D", "#1A535C", "#FF9F1C",
-        "#3D5A80", "#E07A5F", "#81B29A", "#F2CC8F", "#6B705C"
-    ]
-    private let icons = [
-        "heart.fill", "star.fill", "flag.fill", "bolt.fill", "book.fill",
-        "moon.fill", "drop.fill", "flame.fill", "leaf.fill", "sun.max.fill",
-        "gamecontroller.fill", "music.note", "swift", "cart.fill", "airplane"
-    ]
-    private var selectedColorIndex = 0
-    private var selectedIconIndex = 0
-    private var selectedFrequency: HabitFrequency = .daily
-    private var selectedBuddies: [User] = []
-    
-    weak var delegate: AddHabitViewControllerDelegate?
-    
+    private let cardView = UIView()
+    private let promptLabel = UILabel()
+    private let activityStack = UIStackView()
+    private var activityButtons: [UIButton] = []
+    private let timesStepper = HabitStepper()
+    private let daysStepper = HabitStepper()
+    private let pageControl = UIPageControl()
+    private let nextButton = UIButton(type: .system)
+    private let activities = ["Activity", "Meditate", "Workout"]
+    private var selectedActivityIdx = 1
+
     override func viewDidLoad() {
         super.viewDidLoad()
+        overrideUserInterfaceStyle = .light
         setupUI()
-        setupCollectionViews()
     }
-    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: false)
+        overrideUserInterfaceStyle = .light
+    }
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        navigationController?.setNavigationBarHidden(false, animated: false)
+    }
+
     private func setupUI() {
-        view.backgroundColor = .systemBackground
-        
-        // Scroll View
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.showsVerticalScrollIndicator = false
-        view.addSubview(scrollView)
-        
-        // Content View
-        contentView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.addSubview(contentView)
-        
-        // Header View
+        view.backgroundColor = UIColor(hex: "#D5FFF3")
+        // Header
         headerView.translatesAutoresizingMaskIntoConstraints = false
-        headerView.backgroundColor = UIColor(hex: "#4F46E5") ?? .systemBlue
-        contentView.addSubview(headerView)
-        
-        // Title Label
+        headerView.backgroundColor = UIColor(hex: "#D5FFF3")
+        view.addSubview(headerView)
+        NSLayoutConstraint.activate([
+            headerView.topAnchor.constraint(equalTo: view.topAnchor),
+            headerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            headerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            headerView.heightAnchor.constraint(equalToConstant: 110)
+        ])
+
+        // Title
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.text = "Create New Habit"
-        titleLabel.font = UIFont.systemFont(ofSize: 24, weight: .bold)
-        titleLabel.textColor = .white
+        titleLabel.font = UIFont.boldSystemFont(ofSize: 36)
+        titleLabel.text = "Create"
+        titleLabel.textColor = .black
         headerView.addSubview(titleLabel)
-        
-        // Close Button
+        NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 24),
+            titleLabel.bottomAnchor.constraint(equalTo: headerView.bottomAnchor, constant: -18)
+        ])
+
+        // Close
         closeButton.translatesAutoresizingMaskIntoConstraints = false
-        closeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
-        closeButton.tintColor = .white
-        closeButton.contentVerticalAlignment = .fill
-        closeButton.contentHorizontalAlignment = .fill
+        closeButton.setImage(UIImage(systemName: "xmark"), for: .normal)
+        closeButton.tintColor = .black
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         headerView.addSubview(closeButton)
-        
-        // Habit Title TextField
-        habitTitleTextField.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(habitTitleTextField)
-        
-        // Habit Description TextField
-        habitDescriptionTextField.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(habitDescriptionTextField)
-        
-        // Frequency Label
-        frequencyLabel.translatesAutoresizingMaskIntoConstraints = false
-        frequencyLabel.text = "Frequency"
-        frequencyLabel.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
-        contentView.addSubview(frequencyLabel)
-        
-        // Frequency Segmented Control
-        frequencySegmentedControl.translatesAutoresizingMaskIntoConstraints = false
-        frequencySegmentedControl.selectedSegmentIndex = 0
-        frequencySegmentedControl.addTarget(self, action: #selector(frequencyChanged), for: .valueChanged)
-        contentView.addSubview(frequencySegmentedControl)
-        
-        // Color Label
-        colorLabel.translatesAutoresizingMaskIntoConstraints = false
-        colorLabel.text = "Color"
-        colorLabel.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
-        contentView.addSubview(colorLabel)
-        
-        // Color Collection View
-        colorCollectionView.translatesAutoresizingMaskIntoConstraints = false
-        colorCollectionView.backgroundColor = .clear
-        colorCollectionView.showsHorizontalScrollIndicator = false
-        contentView.addSubview(colorCollectionView)
-        
-        // Icon Label
-        iconLabel.translatesAutoresizingMaskIntoConstraints = false
-        iconLabel.text = "Icon"
-        iconLabel.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
-        contentView.addSubview(iconLabel)
-        
-        // Icon Collection View
-        iconCollectionView.translatesAutoresizingMaskIntoConstraints = false
-        iconCollectionView.backgroundColor = .clear
-        iconCollectionView.showsHorizontalScrollIndicator = false
-        contentView.addSubview(iconCollectionView)
-        
-        // Buddies Label
-        buddiesLabel.translatesAutoresizingMaskIntoConstraints = false
-        buddiesLabel.text = "Share with Friends"
-        buddiesLabel.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
-        contentView.addSubview(buddiesLabel)
-        
-        // Buddies Button
-        buddiesButton.translatesAutoresizingMaskIntoConstraints = false
-        buddiesButton.setTitle("Select Buddies", for: .normal)
-        buddiesButton.setImage(UIImage(systemName: "person.badge.plus"), for: .normal)
-        buddiesButton.titleLabel?.font = UIFont.systemFont(ofSize: 16)
-        buddiesButton.backgroundColor = UIColor.systemGray6
-        buddiesButton.layer.cornerRadius = 10
-        buddiesButton.tintColor = .systemBlue
-        buddiesButton.contentEdgeInsets = UIEdgeInsets(top: 12, left: 20, bottom: 12, right: 20)
-        buddiesButton.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 0)
-        buddiesButton.addTarget(self, action: #selector(addBuddyTapped), for: .touchUpInside)
-        contentView.addSubview(buddiesButton)
-        
-        // Create Button
-        createButton.translatesAutoresizingMaskIntoConstraints = false
-        createButton.setTitle("Create Habit", for: .normal)
-        createButton.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
-        createButton.backgroundColor = UIColor(hex: "#4F46E5") ?? .systemBlue
-        createButton.setTitleColor(.white, for: .normal)
-        createButton.layer.cornerRadius = 16
-        createButton.contentEdgeInsets = UIEdgeInsets(top: 16, left: 0, bottom: 16, right: 0)
-        createButton.addTarget(self, action: #selector(createButtonTapped), for: .touchUpInside)
-        contentView.addSubview(createButton)
-        
-        // Layout Constraints
-        let headerHeight: CGFloat = 150
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: view.topAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            
-            contentView.topAnchor.constraint(equalTo: scrollView.topAnchor),
-            contentView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
-            contentView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
-            contentView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
-            contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
-            
-            headerView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            headerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            headerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            headerView.heightAnchor.constraint(equalToConstant: headerHeight),
-            
-            titleLabel.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
-            titleLabel.bottomAnchor.constraint(equalTo: headerView.bottomAnchor, constant: -30),
-            
-            closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
-            closeButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -20),
+            closeButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -24),
+            closeButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
             closeButton.widthAnchor.constraint(equalToConstant: 30),
-            closeButton.heightAnchor.constraint(equalToConstant: 30),
-            
-            habitTitleTextField.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: 30),
-            habitTitleTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            habitTitleTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
-            habitTitleTextField.heightAnchor.constraint(equalToConstant: 60),
-            
-            habitDescriptionTextField.topAnchor.constraint(equalTo: habitTitleTextField.bottomAnchor, constant: 24),
-            habitDescriptionTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            habitDescriptionTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
-            habitDescriptionTextField.heightAnchor.constraint(equalToConstant: 60),
-            
-            frequencyLabel.topAnchor.constraint(equalTo: habitDescriptionTextField.bottomAnchor, constant: 32),
-            frequencyLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            
-            frequencySegmentedControl.topAnchor.constraint(equalTo: frequencyLabel.bottomAnchor, constant: 16),
-            frequencySegmentedControl.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            frequencySegmentedControl.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
-            frequencySegmentedControl.heightAnchor.constraint(equalToConstant: 44),
-            
-            colorLabel.topAnchor.constraint(equalTo: frequencySegmentedControl.bottomAnchor, constant: 32),
-            colorLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            
-            colorCollectionView.topAnchor.constraint(equalTo: colorLabel.bottomAnchor, constant: 16),
-            colorCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            colorCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
-            colorCollectionView.heightAnchor.constraint(equalToConstant: 40),
-            
-            iconLabel.topAnchor.constraint(equalTo: colorCollectionView.bottomAnchor, constant: 32),
-            iconLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            
-            iconCollectionView.topAnchor.constraint(equalTo: iconLabel.bottomAnchor, constant: 16),
-            iconCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            iconCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
-            iconCollectionView.heightAnchor.constraint(equalToConstant: 40),
-            
-            buddiesLabel.topAnchor.constraint(equalTo: iconCollectionView.bottomAnchor, constant: 32),
-            buddiesLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            
-            buddiesButton.topAnchor.constraint(equalTo: buddiesLabel.bottomAnchor, constant: 16),
-            buddiesButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            
-            createButton.topAnchor.constraint(equalTo: buddiesButton.bottomAnchor, constant: 40),
-            createButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            createButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
-            createButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -40)
+            closeButton.heightAnchor.constraint(equalToConstant: 30)
         ])
-        
-        // Apply gradient to header view
-        DispatchQueue.main.async {
-            self.headerView.applyGradient(
-                colors: [
-                    UIColor(hex: "#4F46E5") ?? .systemBlue,
-                    UIColor(hex: "#8B5CF6") ?? .systemIndigo
-                ],
-                startPoint: CGPoint(x: 0, y: 0),  // Top left
-                endPoint: CGPoint(x: 1, y: 1)     // Bottom right
-            )
+
+        // Card
+        cardView.translatesAutoresizingMaskIntoConstraints = false
+        cardView.backgroundColor = .white
+        cardView.layer.cornerRadius = 40
+        view.addSubview(cardView)
+        NSLayoutConstraint.activate([
+            cardView.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: -20),
+            cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            cardView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        // Prompt
+        promptLabel.translatesAutoresizingMaskIntoConstraints = false
+        promptLabel.text = "I want to"
+        promptLabel.font = UIFont.boldSystemFont(ofSize: 32)
+        promptLabel.textColor = .black
+        cardView.addSubview(promptLabel)
+        NSLayoutConstraint.activate([
+            promptLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 32),
+            promptLabel.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 32)
+        ])
+
+        // Activities
+        activityStack.translatesAutoresizingMaskIntoConstraints = false
+        activityStack.axis = .horizontal
+        activityStack.spacing = 18
+        cardView.addSubview(activityStack)
+        NSLayoutConstraint.activate([
+            activityStack.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 32),
+            activityStack.topAnchor.constraint(equalTo: promptLabel.bottomAnchor, constant: 28),
+            activityStack.heightAnchor.constraint(equalToConstant: 52)
+        ])
+        for (i, name) in activities.enumerated() {
+            let btn = UIButton(type: .system)
+            btn.setTitle(name, for: .normal)
+            btn.titleLabel?.font = UIFont.boldSystemFont(ofSize: 24)
+            btn.layer.cornerRadius = 18
+            btn.contentEdgeInsets = UIEdgeInsets(top: 8, left: 22, bottom: 8, right: 22)
+            btn.addTarget(self, action: #selector(activitySelected(_:)), for: .touchUpInside)
+            btn.tag = i
+            btn.setTitleColor(.black, for: .normal)
+            btn.backgroundColor = (i == selectedActivityIdx) ? UIColor(hex: "#D5FFF3") : UIColor(white: 0, alpha: 0.08)
+            btn.layer.borderWidth = (i == selectedActivityIdx) ? 3 : 0
+            btn.layer.borderColor = (i == selectedActivityIdx) ? UIColor(hex: "#D5FFF3")!.cgColor : UIColor.clear.cgColor
+            activityStack.addArrangedSubview(btn)
+            activityButtons.append(btn)
         }
+
+        // Times Stepper
+        timesStepper.translatesAutoresizingMaskIntoConstraints = false
+        cardView.addSubview(timesStepper)
+        NSLayoutConstraint.activate([
+            timesStepper.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 32),
+            timesStepper.topAnchor.constraint(equalTo: activityStack.bottomAnchor, constant: 44),
+            timesStepper.widthAnchor.constraint(equalToConstant: 120),
+            timesStepper.heightAnchor.constraint(equalToConstant: 52)
+        ])
+        timesStepper.label.text = "times in"
+        timesStepper.label.textColor = .black
+        timesStepper.valueLabel.textColor = .black
+        timesStepper.backgroundColor = UIColor(white: 0, alpha: 0.07)
+
+        // Days Stepper
+        daysStepper.translatesAutoresizingMaskIntoConstraints = false
+        cardView.addSubview(daysStepper)
+        NSLayoutConstraint.activate([
+            daysStepper.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 32),
+            daysStepper.topAnchor.constraint(equalTo: timesStepper.bottomAnchor, constant: 24),
+            daysStepper.widthAnchor.constraint(equalToConstant: 120),
+            daysStepper.heightAnchor.constraint(equalToConstant: 52)
+        ])
+        daysStepper.label.text = "days."
+        daysStepper.label.textColor = .black
+        daysStepper.valueLabel.textColor = .black
+        daysStepper.backgroundColor = UIColor(white: 0, alpha: 0.07)
+
+        // PageControl
+        pageControl.translatesAutoresizingMaskIntoConstraints = false
+        pageControl.numberOfPages = 3
+        pageControl.currentPage = 0
+        pageControl.pageIndicatorTintColor = UIColor(white: 0, alpha: 0.1)
+        pageControl.currentPageIndicatorTintColor = UIColor(hex: "#D5FFF3")
+        cardView.addSubview(pageControl)
+        NSLayoutConstraint.activate([
+            pageControl.centerXAnchor.constraint(equalTo: cardView.centerXAnchor),
+            pageControl.topAnchor.constraint(equalTo: daysStepper.bottomAnchor, constant: 32)
+        ])
+
+        // Next Button
+        nextButton.translatesAutoresizingMaskIntoConstraints = false
+        nextButton.setTitle("NEXT", for: .normal)
+        nextButton.titleLabel?.font = UIFont.boldSystemFont(ofSize: 20)
+        nextButton.backgroundColor = UIColor(hex: "#D5FFF3")
+        nextButton.setTitleColor(.black, for: .normal)
+        nextButton.layer.cornerRadius = 28
+        nextButton.addTarget(self, action: #selector(nextTapped), for: .touchUpInside)
+        cardView.addSubview(nextButton)
+        NSLayoutConstraint.activate([
+            nextButton.centerXAnchor.constraint(equalTo: cardView.centerXAnchor),
+            nextButton.topAnchor.constraint(equalTo: pageControl.bottomAnchor, constant: 32),
+            nextButton.widthAnchor.constraint(equalToConstant: 160),
+            nextButton.heightAnchor.constraint(equalToConstant: 56)
+        ])
     }
-    
-    private func setupCollectionViews() {
-        // Register cells
-        colorCollectionView.register(ColorCollectionViewCell.self, forCellWithReuseIdentifier: "ColorCell")
-        iconCollectionView.register(IconCollectionViewCell.self, forCellWithReuseIdentifier: "IconCell")
-        
-        // Set delegates and data sources
-        colorCollectionView.delegate = self
-        colorCollectionView.dataSource = self
-        iconCollectionView.delegate = self
-        iconCollectionView.dataSource = self
-        
-        // Tag to differentiate between collections
-        colorCollectionView.tag = 0
-        iconCollectionView.tag = 1
-    }
-    
-    @objc private func closeTapped() {
-        dismiss(animated: true)
-    }
-    
-    // Update the frequency changed method to show custom picker when "Custom" is selected
-    @objc private func frequencyChanged() {
-        switch frequencySegmentedControl.selectedSegmentIndex {
-        case 0:
-            selectedFrequency = .daily
-        case 1:
-            selectedFrequency = .weekly
-        case 2:
-            selectedFrequency = .monthly
-        case 3:
-            selectedFrequency = .custom
-            // Show custom frequency picker
-            showCustomFrequencyPicker()
-        default:
-            selectedFrequency = .daily
+
+    @objc private func activitySelected(_ sender: UIButton) {
+        for btn in activityButtons {
+            btn.backgroundColor = (btn == sender) ? UIColor(hex: "#D5FFF3") : UIColor(white: 0, alpha: 0.08)
+            btn.layer.borderWidth = btn == sender ? 3 : 0
+            btn.layer.borderColor = btn == sender ? UIColor(hex: "#D5FFF3")!.cgColor : UIColor.clear.cgColor
         }
+        selectedActivityIdx = sender.tag
     }
-    
-    @objc private func addBuddyTapped() {
-        let buddySelectorVC = BuddySelectorViewController(selectedBuddies: selectedBuddies)
-        buddySelectorVC.delegate = self
-        navigationController?.pushViewController(buddySelectorVC, animated: true)
-    }
-    
-    @objc private func createButtonTapped() {
-        guard let title = habitTitleTextField.text, !title.isEmpty else {
-            showAlert(title: "Error", message: "Please enter a habit title")
-            habitTitleTextField.shake() // Add visual feedback
-            return
-        }
-        
-        // Validate custom frequency is set if that option is selected
-        if selectedFrequency == .custom && customFrequencyData == nil {
-            showCustomFrequencyPicker()
-            return
-        }
-        
-        let description = habitDescriptionTextField.text
-        let color = colors[selectedColorIndex]
-        let icon = icons[selectedIconIndex]
-        let buddyIds = selectedBuddies.map { $0.id }
-        
-        // Add haptic feedback before creating
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.prepare()
-        generator.impactOccurred()
-        
-        // Create habit with custom data if needed
-        var additionalData: [String: Any]? = nil
-        
-        if let customData = customFrequencyData {
-            additionalData = [
-                "customDays": customData.days,
-                "customTimes": customData.times.map { $0.timeIntervalSince1970 },
-                "reminderEnabled": customData.reminderEnabled
-            ]
-        }
-        
-        // Create habit
-        HabitService.shared.createHabit(
-            title: title,
-            description: description,
-            frequency: selectedFrequency,
-            color: color,
-            icon: icon,
-            buddyIds: buddyIds.isEmpty ? nil : buddyIds,
-            additionalData: additionalData
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success:
-                    self?.delegate?.didAddHabit()
-                    self?.dismiss(animated: true)
-                    
-                case .failure(let error):
-                    self?.showAlert(title: "Error", message: error.localizedDescription)
-                }
-            }
-        }
-    }
-    
-    private func showCustomFrequencyPicker() {
-        let customFrequencyVC = CustomFrequencyViewController()
-        customFrequencyVC.delegate = self
-        
-        let navController = UINavigationController(rootViewController: customFrequencyVC)
-        navController.modalPresentationStyle = .fullScreen
-        present(navController, animated: true)
-    }
-    
-    private func showAlert(title: String, message: String) {
-        let alertController = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alertController.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alertController, animated: true)
+    @objc private func closeTapped() { dismiss(animated: true) }
+    @objc private func nextTapped() {
+        // Use your current backend logic to create the habit here
     }
 }
 
-// MARK: - UICollectionViewDelegate & UICollectionViewDataSource
-extension AddHabitViewController: UICollectionViewDelegate, UICollectionViewDataSource {
-    
-    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        if collectionView.tag == 0 {
-            return colors.count
-        } else {
-            return icons.count
-        }
+class HabitStepper: UIView {
+    let label = UILabel()
+    let valueLabel = UILabel()
+    var value: Int = 1 {
+        didSet { valueLabel.text = "\(value)" }
     }
-    
-    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-        if collectionView.tag == 0 {
-            guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "ColorCell", for: indexPath) as? ColorCollectionViewCell else {
-                return UICollectionViewCell()
-            }
-            
-            let colorHex = colors[indexPath.item]
-            cell.configure(with: colorHex, isSelected: indexPath.item == selectedColorIndex)
-            return cell
-        } else {
-            guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "IconCell", for: indexPath) as? IconCollectionViewCell else {
-                return UICollectionViewCell()
-            }
-            
-            let iconName = icons[indexPath.item]
-            cell.configure(with: iconName, isSelected: indexPath.item == selectedIconIndex)
-            return cell
-        }
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = UIColor(white: 0, alpha: 0.07)
+        layer.cornerRadius = 14
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = UIFont.boldSystemFont(ofSize: 22)
+        label.textColor = .black
+        addSubview(label)
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+        valueLabel.font = UIFont.boldSystemFont(ofSize: 22)
+        valueLabel.textColor = .black
+        valueLabel.text = "\(value)"
+        addSubview(valueLabel)
+        let up = UIButton(type: .system)
+        up.setTitle("▲", for: .normal)
+        up.tintColor = .black
+        up.addTarget(self, action: #selector(increment), for: .touchUpInside)
+        up.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(up)
+        let down = UIButton(type: .system)
+        down.setTitle("▼", for: .normal)
+        down.tintColor = .black
+        down.addTarget(self, action: #selector(decrement), for: .touchUpInside)
+        down.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(down)
+        NSLayoutConstraint.activate([
+            valueLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            valueLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            valueLabel.widthAnchor.constraint(equalToConstant: 28),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            label.leadingAnchor.constraint(equalTo: valueLabel.trailingAnchor, constant: 10),
+            up.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            up.topAnchor.constraint(equalTo: topAnchor, constant: 7),
+            down.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            down.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -7)
+        ])
     }
-    
-    
-    
-    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        // Add haptic feedback
-        let feedbackGenerator = UISelectionFeedbackGenerator()
-        feedbackGenerator.selectionChanged()
-        
-        if collectionView.tag == 0 {
-            selectedColorIndex = indexPath.item
-            colorCollectionView.reloadData()
-        } else {
-            selectedIconIndex = indexPath.item
-            iconCollectionView.reloadData()
-        }
-    }
+    required init?(coder: NSCoder) { fatalError() }
+    @objc private func increment() { value += 1 }
+    @objc private func decrement() { if value > 1 { value -= 1 } }
 }
 
-// MARK: - BuddySelectorViewControllerDelegate
-extension AddHabitViewController: BuddySelectorViewControllerDelegate {
-    func didSelectBuddies(_ buddies: [User]) {
-        selectedBuddies = buddies
-        
-        // Update buddy button label based on selection
-        if buddies.isEmpty {
-            buddiesButton.setTitle("Select Buddies", for: .normal)
-        } else {
-            buddiesButton.setTitle("\(buddies.count) Buddy(ies) Selected", for: .normal)
-        }
-    }
-}
-
-// MARK: - CustomFrequencyViewControllerDelegate
-extension AddHabitViewController: CustomFrequencyViewControllerDelegate {
-    func didSaveCustomFrequency(selectedDays: [Int], selectedTimes: [Date], reminderEnabled: Bool) {
-        // Store the custom frequency data
-        customFrequencyData = (selectedDays, selectedTimes, reminderEnabled)
-        
-        // Update UI to show custom frequency is set
-        let dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-        let selectedDayNames = selectedDays.map { dayNames[$0] }.joined(separator: ", ")
-        
-        // You could add a label to show the selected custom frequency
-        // For example:
-        // customFrequencyLabel.text = "Custom: \(selectedDayNames)"
-        // customFrequencyLabel.isHidden = false
-        
-        // Update create button to show custom is set
-        createButton.setTitle("Create Habit (Custom Schedule)", for: .normal)
-    }
-}

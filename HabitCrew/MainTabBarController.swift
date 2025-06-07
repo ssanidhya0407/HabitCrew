@@ -19,7 +19,7 @@ class MainTabBarController: UITabBarController {
         // Setup View Controllers
         viewControllers = [
             createNavController(for: HomeViewController(), title: "Home", image: UIImage(systemName: "house.fill")!),
-            createNavController(for: TasksViewController(), title: "Tasks", image: UIImage(systemName: "checklist")!),
+            createNavController(for: AddHabitViewController(), title: "Tasks", image: UIImage(systemName: "checklist")!),
             createNavController(for: FriendsViewController(), title: "Friends", image: UIImage(systemName: "person.2.fill")!),
             createNavController(for: ProfileViewController(), title: "Profile", image: UIImage(systemName: "person.fill")!)
         ]
