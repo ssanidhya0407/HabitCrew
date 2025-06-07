@@ -340,16 +340,7 @@ class ProgressIndicator: UIView {
         setProgress(1.0, animated: animated)
     }
     
-    /// Pulse animation for attention
-    func pulseAnimation() {
-        let pulse = CABasicAnimation(keyPath: "transform.scale")
-        pulse.duration = 0.6
-        pulse.fromValue = 1.0
-        pulse.toValue = 1.05
-        pulse.autoreverses = true
-        pulse.repeatCount = 2
-        progressLayer?.add(pulse, forKey: "pulse")
-    }
+
 }
 
 // MARK: - Factory Methods

@@ -160,18 +160,6 @@ class FloatingActionButton: UIButton {
         )
     }
     
-    /// Pulse animation for attention
-    func pulseAnimation() {
-        let pulse = CABasicAnimation(keyPath: "transform.scale")
-        pulse.duration = 1.0
-        pulse.fromValue = 1.0
-        pulse.toValue = 1.05
-        pulse.autoreverses = true
-        pulse.repeatCount = 3
-        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        
-        layer.add(pulse, forKey: "pulse")
-    }
     
     /// Rotation animation for state changes
     func rotateIcon(to iconName: String, animated: Bool = true) {
@@ -189,6 +177,10 @@ class FloatingActionButton: UIButton {
         } else {
             setImage(newImage, for: .normal)
         }
+    }
+
+    func configureAsPrimary() {
+        self.gradientColors = [.accentMint, .accentPurple]
     }
 }
 

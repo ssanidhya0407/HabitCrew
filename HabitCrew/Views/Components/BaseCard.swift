@@ -49,7 +49,7 @@ class BaseCard: UIView {
         setupLayout()
     }
     
-    private func setupAppearance() {
+    public func setupAppearance() {
         // Apply design system styling
         applyBackground(.secondary)
         applyCornerRadius(.card)

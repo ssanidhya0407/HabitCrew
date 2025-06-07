@@ -1,112 +1,73 @@
-//
-//  DesignTokens.swift
-//  HabitCrew
-//
-//  Created by Sanidhya's MacBook Pro on 06/06/25.
-//
-
-
-//
-//  DesignTokens.swift
-//  HabitCrew
-//
-//  Created on 2025-06-06
-//  Design System Foundation - Color Palette
-//
-
 import UIKit
 
-/// Centralized design tokens for the HabitCrew app
-/// Inspired by modern habit tracking apps with dark theme and vibrant accents
 struct DesignTokens {
-    
-    // MARK: - Color Palette
-    
-    /// Primary background colors for dark theme
+
+    struct Pastel {
+        static let blue = UIColor(hex: "#A7D1FF") ?? .blue
+        static let green = UIColor(hex: "#B7F2B3") ?? .green
+        static let yellow = UIColor(hex: "#FFF5BA") ?? .yellow
+        static let pink = UIColor(hex: "#FFBBD9") ?? .systemPink
+        static let purple = UIColor(hex: "#D1B3FF") ?? .purple
+    }
+
     struct Background {
-        /// Main background color - #1C1C1E
-        static let primary = UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1.0)
-        
-        /// Card background color - #2C2C2E
-        static let secondary = UIColor(red: 0.17, green: 0.17, blue: 0.18, alpha: 1.0)
-        
-        /// Elevated surface color for modals and overlays
-        static let elevated = UIColor(red: 0.22, green: 0.22, blue: 0.23, alpha: 1.0)
+        static let primary = UIColor(hex: "#F7F9FB") ?? .systemBackground // Light background
+        static let secondary = UIColor(hex: "#FFFFFF") ?? .secondarySystemBackground // White card background
+        static let elevated = UIColor(hex: "#FFFFFF") ?? .tertiarySystemBackground // White elevated background
     }
-    
-    /// Vibrant accent colors for actions and highlights
+
     struct Accent {
-        /// Primary action color - Mint #64FFDA
-        static let mint = UIColor(red: 0.39, green: 1.0, blue: 0.85, alpha: 1.0)
-        
-        /// Secondary action color - Purple #BB86FC
-        static let purple = UIColor(red: 0.73, green: 0.53, blue: 0.99, alpha: 1.0)
-        
-        /// Warning/streak color - Coral #FF6B6B
-        static let coral = UIColor(red: 1.0, green: 0.42, blue: 0.42, alpha: 1.0)
-        
-        /// Success color - Green #30D158
-        static let green = UIColor(red: 0.19, green: 0.82, blue: 0.35, alpha: 1.0)
-        
-        /// Warning color - Orange #FF9F0A
-        static let orange = UIColor(red: 1.0, green: 0.62, blue: 0.04, alpha: 1.0)
+        static let mint = UIColor(hex: "#B7F2B3") ?? .green // Pastel Green
+        static let purple = UIColor(hex: "#D1B3FF") ?? .purple // Pastel Purple
+        static let coral = UIColor(hex: "#FFBBD9") ?? .systemPink // Pastel Pink
+        static let green = UIColor(hex: "#B7F2B3") ?? .green // Pastel Green
+        static let orange = UIColor(hex: "#FFF5BA") ?? .orange // Pastel Yellow
     }
-    
-    /// Text colors for optimal contrast and readability
+
     struct Text {
-        /// Primary text color - White #FFFFFF
-        static let primary = UIColor.white
-        
-        /// Secondary text color - Gray #8E8E93
-        static let secondary = UIColor(red: 0.56, green: 0.56, blue: 0.58, alpha: 1.0)
-        
-        /// Tertiary text color for subtle information
-        static let tertiary = UIColor(red: 0.43, green: 0.43, blue: 0.45, alpha: 1.0)
-        
-        /// Disabled text color
-        static let disabled = UIColor(red: 0.33, green: 0.33, blue: 0.35, alpha: 1.0)
+        static let primary = UIColor.black // Dark text
+        static let secondary = UIColor(hex: "#6B7280") ?? .secondaryLabel // Gray text
+        static let tertiary = UIColor(hex: "#9CA3AF") ?? .tertiaryLabel
+        static let disabled = UIColor(hex: "#D1D5DB") ?? .quaternaryLabel
     }
-    
-    /// System colors for states and feedback
-    struct System {
-        static let success = Accent.green
-        static let warning = Accent.orange
-        static let error = Accent.coral
-        static let info = Accent.purple
-    }
-    
-    // MARK: - Gradient Definitions
-    
-    /// Pre-defined gradients for consistent visual appeal
-    struct Gradients {
-        /// Mint to Purple gradient for primary actions
-        static let mintPurple = [Accent.mint.cgColor, Accent.purple.cgColor]
-        
-        /// Purple to Coral gradient for secondary actions
-        static let purpleCoral = [Accent.purple.cgColor, Accent.coral.cgColor]
-        
-        /// Success gradient
-        static let success = [Accent.green.cgColor, UIColor(red: 0.15, green: 0.68, blue: 0.28, alpha: 1.0).cgColor]
-    }
-}
 
-// MARK: - Semantic Color Extensions
-
-extension DesignTokens {
-    /// Semantic colors that adapt to different contexts
     struct Semantic {
-        // MARK: - Interactive Elements
-        static let buttonPrimary = Accent.mint
-        static let buttonSecondary = Accent.purple
-        static let buttonDestructive = Accent.coral
-        
-        // MARK: - Surfaces
-        static let cardBackground = Background.secondary
-        static let modalBackground = Background.elevated
-        static let screenBackground = Background.primary
-        
-        // MARK: - Borders and Dividers
-        static let border = UIColor(red: 0.33, green: 0.33, blue: 0.35, alpha: 1.0)
-        static let divider = UIColor(red: 0.28, green: 0.28, blue: 0.30, alpha: 1.0)
+        static let buttonPrimary = UIColor(hex: "#A7D1FF") ?? .systemBlue // Pastel Blue
+        static let buttonSecondary = UIColor(hex: "#FFFFFF") ?? .secondarySystemFill // White
+        static let buttonDestructive = UIColor(hex: "#FFBBD9") ?? .systemRed // Pastel Pink
+        static let border = UIColor(hex: "#E5E7EB") ?? .separator
+        static let divider = UIColor(hex: "#E5E7EB") ?? .opaqueSeparator
+    }
+
+    struct System {
+        static let success = UIColor(hex: "#30D158") ?? .systemGreen
+        static let warning = UIColor(hex: "#FF9F0A") ?? .systemOrange
+        static let error = UIColor(hex: "#FF3B30") ?? .systemRed
+        static let info = UIColor(hex: "#007AFF") ?? .systemBlue
+    }
+
+    struct Spacing {
+        static let small: CGFloat = 8.0
+        static let medium: CGFloat = 16.0
+        static let large: CGFloat = 24.0
+    }
+
+    struct BorderRadius {
+        static let small: CGFloat = 4.0
+        static let medium: CGFloat = 8.0
+        static let large: CGFloat = 12.0
+    }
+
+    struct Font {
+        static let headline: UIFont = .systemFont(ofSize: 24, weight: .bold) // SF Pro Bold
+        static let title: UIFont = .systemFont(ofSize: 20, weight: .semibold) // SF Pro Semibold
+        static let body: UIFont = .systemFont(ofSize: 16, weight: .regular) // SF Pro Regular
+        static let caption: UIFont = .systemFont(ofSize: 12, weight: .medium) // SF Pro Medium
+    }
+    
+    struct Gradients {
+        static let mintPurple = [UIColor(hex: "#B7F2B3")?.cgColor ?? UIColor.green.cgColor, UIColor(hex: "#D1B3FF")?.cgColor ?? UIColor.purple.cgColor]
+        static let purpleCoral = [UIColor(hex: "#D1B3FF")?.cgColor ?? UIColor.purple.cgColor, UIColor(hex: "#FFBBD9")?.cgColor ?? UIColor.systemPink.cgColor]
+        static let success = [UIColor(hex: "#30D158")?.cgColor ?? UIColor.systemGreen.cgColor, UIColor(hex: "#B7F2B3")?.cgColor ?? UIColor.green.cgColor]
     }
 }

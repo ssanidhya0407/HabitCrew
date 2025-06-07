@@ -9,94 +9,94 @@
 import UIKit
 
 class HomeViewController: UIViewController {
-    
+
     // MARK: - UI Components
-    
+
     private let scrollView = UIScrollView()
     private let contentView = UIView()
-    
+
     // Header components
     private let headerView = UIView()
     private let greetingLabel = UILabel()
     private let dateLabel = UILabel()
     private let profileButton = UIButton()
-    
+
     // Mini calendar
     private let calendarCard = BaseCard()
     private let miniCalendar = MiniCalendarView()
-    
+
     // Summary section
     private let summaryCard = GradientCard(gradientStyle: .mintPurple)
     private let circularProgress = CircularProgressView(frame: .zero, lineWidth: 12)
     private let progressTitleLabel = UILabel()
     private let progressDescriptionLabel = UILabel()
-    
+
     // Today's Habits section
     private let todaySection = UIView()
     private let todaySectionHeader = UIView()
     private let todayTitleLabel = UILabel()
     private let todaySeeAllButton = UIButton(type: .system)
-    
+
     // Habits collection view
     private let habitsCollectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .vertical
-        layout.minimumLineSpacing = Spacing.medium
-        layout.minimumInteritemSpacing = Spacing.medium
+        layout.minimumLineSpacing = DesignTokens.Spacing.medium
+        layout.minimumInteritemSpacing = DesignTokens.Spacing.medium
         layout.sectionInset = UIEdgeInsets(
-            top: Spacing.medium,
-            left: Spacing.medium,
-            bottom: Spacing.medium,
-            right: Spacing.medium
+            top: DesignTokens.Spacing.medium,
+            left: DesignTokens.Spacing.medium,
+            bottom: DesignTokens.Spacing.medium,
+            right: DesignTokens.Spacing.medium
         )
         return UICollectionView(frame: .zero, collectionViewLayout: layout)
     }()
-    
+
     // Empty state
     private let emptyStateView = EmptyStateView.noHabits()
-    
+
     // Floating action button
     private let addHabitButton: FloatingActionButton = {
         let button = FloatingActionButton()
         button.configureAsPrimary()
         return button
     }()
-    
+
     // Data
     private var todayHabits: [Habit] = []
     private var allHabits: [Habit] = []
     private var isLoading = true
     private var selectedDate = Date()
-    
+
     // MARK: - Lifecycle
-    
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
         setupCollectionView()
     }
-    
+
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.setNavigationBarHidden(true, animated: animated)
         loadHabits()
         updateDateLabel()
     }
-    
+
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         navigationController?.setNavigationBarHidden(false, animated: animated)
     }
-    
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        
+
         // Animate components in
         animateComponentsIn()
     }
-    
+
     // MARK: - Setup Methods
-    
+
     private func setupUI() {
         view.backgroundColor = .backgroundPrimary
 
@@ -135,13 +135,13 @@ class HomeViewController: UIViewController {
         contentView.addSubview(headerView)
 
         greetingLabel.translatesAutoresizingMaskIntoConstraints = false
-        greetingLabel.font = .headline
+        greetingLabel.font = DesignTokens.Font.headline
         greetingLabel.textColor = .textPrimary
         greetingLabel.text = "Welcome Back!"
         headerView.addSubview(greetingLabel)
 
         dateLabel.translatesAutoresizingMaskIntoConstraints = false
-        dateLabel.font = .caption
+        dateLabel.font = DesignTokens.Font.caption
         dateLabel.textColor = .textSecondary
         dateLabel.text = "June 6, 2025"
         headerView.addSubview(dateLabel)
@@ -153,14 +153,14 @@ class HomeViewController: UIViewController {
         headerView.addSubview(profileButton)
 
         NSLayoutConstraint.activate([
-            headerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Spacing.medium),
-            headerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Spacing.medium),
-            headerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Spacing.medium),
+            headerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: DesignTokens.Spacing.medium),
+            headerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: DesignTokens.Spacing.medium),
+            headerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -DesignTokens.Spacing.medium),
 
             greetingLabel.topAnchor.constraint(equalTo: headerView.topAnchor),
             greetingLabel.leadingAnchor.constraint(equalTo: headerView.leadingAnchor),
 
-            dateLabel.topAnchor.constraint(equalTo: greetingLabel.bottomAnchor, constant: Spacing.micro),
+            dateLabel.topAnchor.constraint(equalTo: greetingLabel.bottomAnchor, constant: DesignTokens.Spacing.small),
             dateLabel.leadingAnchor.constraint(equalTo: headerView.leadingAnchor),
             dateLabel.bottomAnchor.constraint(equalTo: headerView.bottomAnchor),
 
@@ -180,9 +180,9 @@ class HomeViewController: UIViewController {
         calendarCard.addSubview(miniCalendar)
 
         NSLayoutConstraint.activate([
-            calendarCard.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: Spacing.large),
-            calendarCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Spacing.medium),
-            calendarCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Spacing.medium),
+            calendarCard.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: DesignTokens.Spacing.large),
+            calendarCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: DesignTokens.Spacing.medium),
+            calendarCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -DesignTokens.Spacing.medium),
             calendarCard.heightAnchor.constraint(equalToConstant: 200),
 
             miniCalendar.topAnchor.constraint(equalTo: calendarCard.topAnchor),
@@ -200,36 +200,36 @@ class HomeViewController: UIViewController {
         summaryCard.addSubview(circularProgress)
 
         progressTitleLabel.translatesAutoresizingMaskIntoConstraints = false
-        progressTitleLabel.font = .headline
+        progressTitleLabel.font = DesignTokens.Font.headline
         progressTitleLabel.textColor = .white
         progressTitleLabel.text = "Today's Progress"
         summaryCard.addSubview(progressTitleLabel)
 
         progressDescriptionLabel.translatesAutoresizingMaskIntoConstraints = false
-        progressDescriptionLabel.font = .bodySmall
-        progressDescriptionLabel.textColor = .white.withAlphaComponent(0.8)
+        progressDescriptionLabel.font = DesignTokens.Font.body
+        progressDescriptionLabel.textColor = UIColor.white.withAlphaComponent(0.8)
         progressDescriptionLabel.numberOfLines = 2
         progressDescriptionLabel.text = "Stay consistent and build your habits!"
         summaryCard.addSubview(progressDescriptionLabel)
 
         NSLayoutConstraint.activate([
-            summaryCard.topAnchor.constraint(equalTo: calendarCard.bottomAnchor, constant: Spacing.large),
-            summaryCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Spacing.medium),
-            summaryCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Spacing.medium),
+            summaryCard.topAnchor.constraint(equalTo: calendarCard.bottomAnchor, constant: DesignTokens.Spacing.large),
+            summaryCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: DesignTokens.Spacing.medium),
+            summaryCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -DesignTokens.Spacing.medium),
             summaryCard.heightAnchor.constraint(equalToConstant: 160),
 
             circularProgress.centerYAnchor.constraint(equalTo: summaryCard.centerYAnchor),
-            circularProgress.leadingAnchor.constraint(equalTo: summaryCard.leadingAnchor, constant: Spacing.large),
+            circularProgress.leadingAnchor.constraint(equalTo: summaryCard.leadingAnchor, constant: DesignTokens.Spacing.large),
             circularProgress.widthAnchor.constraint(equalToConstant: 80),
             circularProgress.heightAnchor.constraint(equalToConstant: 80),
 
-            progressTitleLabel.topAnchor.constraint(equalTo: summaryCard.topAnchor, constant: Spacing.large),
-            progressTitleLabel.leadingAnchor.constraint(equalTo: circularProgress.trailingAnchor, constant: Spacing.medium),
-            progressTitleLabel.trailingAnchor.constraint(equalTo: summaryCard.trailingAnchor, constant: -Spacing.large),
+            progressTitleLabel.topAnchor.constraint(equalTo: summaryCard.topAnchor, constant: DesignTokens.Spacing.large),
+            progressTitleLabel.leadingAnchor.constraint(equalTo: circularProgress.trailingAnchor, constant: DesignTokens.Spacing.medium),
+            progressTitleLabel.trailingAnchor.constraint(equalTo: summaryCard.trailingAnchor, constant: -DesignTokens.Spacing.large),
 
-            progressDescriptionLabel.topAnchor.constraint(equalTo: progressTitleLabel.bottomAnchor, constant: Spacing.micro),
-            progressDescriptionLabel.leadingAnchor.constraint(equalTo: circularProgress.trailingAnchor, constant: Spacing.medium),
-            progressDescriptionLabel.trailingAnchor.constraint(equalTo: summaryCard.trailingAnchor, constant: -Spacing.large)
+            progressDescriptionLabel.topAnchor.constraint(equalTo: progressTitleLabel.bottomAnchor, constant: DesignTokens.Spacing.small),
+            progressDescriptionLabel.leadingAnchor.constraint(equalTo: circularProgress.trailingAnchor, constant: DesignTokens.Spacing.medium),
+            progressDescriptionLabel.trailingAnchor.constraint(equalTo: summaryCard.trailingAnchor, constant: -DesignTokens.Spacing.large)
         ])
     }
 
@@ -241,7 +241,7 @@ class HomeViewController: UIViewController {
         todaySection.addSubview(todaySectionHeader)
 
         todayTitleLabel.translatesAutoresizingMaskIntoConstraints = false
-        todayTitleLabel.font = .headline
+        todayTitleLabel.font = DesignTokens.Font.headline
         todayTitleLabel.textColor = .textPrimary
         todayTitleLabel.text = "Today's Habits"
         todaySectionHeader.addSubview(todayTitleLabel)
@@ -260,14 +260,14 @@ class HomeViewController: UIViewController {
         todaySection.addSubview(emptyStateView)
 
         NSLayoutConstraint.activate([
-            todaySection.topAnchor.constraint(equalTo: summaryCard.bottomAnchor, constant: Spacing.large),
+            todaySection.topAnchor.constraint(equalTo: summaryCard.bottomAnchor, constant: DesignTokens.Spacing.large),
             todaySection.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             todaySection.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             todaySection.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
 
             todaySectionHeader.topAnchor.constraint(equalTo: todaySection.topAnchor),
-            todaySectionHeader.leadingAnchor.constraint(equalTo: todaySection.leadingAnchor, constant: Spacing.medium),
-            todaySectionHeader.trailingAnchor.constraint(equalTo: todaySection.trailingAnchor, constant: -Spacing.medium),
+            todaySectionHeader.leadingAnchor.constraint(equalTo: todaySection.leadingAnchor, constant: DesignTokens.Spacing.medium),
+            todaySectionHeader.trailingAnchor.constraint(equalTo: todaySection.trailingAnchor, constant: -DesignTokens.Spacing.medium),
             todaySectionHeader.heightAnchor.constraint(equalToConstant: 40),
 
             todayTitleLabel.leadingAnchor.constraint(equalTo: todaySectionHeader.leadingAnchor),
@@ -276,14 +276,14 @@ class HomeViewController: UIViewController {
             todaySeeAllButton.trailingAnchor.constraint(equalTo: todaySectionHeader.trailingAnchor),
             todaySeeAllButton.centerYAnchor.constraint(equalTo: todaySectionHeader.centerYAnchor),
 
-            habitsCollectionView.topAnchor.constraint(equalTo: todaySectionHeader.bottomAnchor, constant: Spacing.medium),
+            habitsCollectionView.topAnchor.constraint(equalTo: todaySectionHeader.bottomAnchor, constant: DesignTokens.Spacing.medium),
             habitsCollectionView.leadingAnchor.constraint(equalTo: todaySection.leadingAnchor),
             habitsCollectionView.trailingAnchor.constraint(equalTo: todaySection.trailingAnchor),
             habitsCollectionView.bottomAnchor.constraint(equalTo: todaySection.bottomAnchor),
 
-            emptyStateView.topAnchor.constraint(equalTo: todaySectionHeader.bottomAnchor, constant: Spacing.large),
-            emptyStateView.leadingAnchor.constraint(equalTo: todaySection.leadingAnchor, constant: Spacing.medium),
-            emptyStateView.trailingAnchor.constraint(equalTo: todaySection.trailingAnchor, constant: -Spacing.medium),
+            emptyStateView.topAnchor.constraint(equalTo: todaySectionHeader.bottomAnchor, constant: DesignTokens.Spacing.large),
+            emptyStateView.leadingAnchor.constraint(equalTo: todaySection.leadingAnchor, constant: DesignTokens.Spacing.medium),
+            emptyStateView.trailingAnchor.constraint(equalTo: todaySection.trailingAnchor, constant: -DesignTokens.Spacing.medium),
             emptyStateView.bottomAnchor.constraint(equalTo: todaySection.bottomAnchor)
         ])
     }
@@ -294,8 +294,8 @@ class HomeViewController: UIViewController {
         view.addSubview(addHabitButton)
 
         NSLayoutConstraint.activate([
-            addHabitButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Spacing.large),
-            addHabitButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -Spacing.large),
+            addHabitButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -DesignTokens.Spacing.large),
+            addHabitButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -DesignTokens.Spacing.large),
             addHabitButton.widthAnchor.constraint(equalToConstant: 60),
             addHabitButton.heightAnchor.constraint(equalToConstant: 60)
         ])
@@ -342,17 +342,17 @@ class HomeViewController: UIViewController {
     }
 
     // MARK: - Data Loading & Updates
-    
+
     private func loadHabits() {
         isLoading = true
         updateUI(forLoadingState: true)
 
         HabitService.shared.getHabits { [weak self] result in
             guard let self = self else { return }
-            
+
             DispatchQueue.main.async {
                 self.isLoading = false
-                
+
                 switch result {
                 case .success(let habits):
                     self.allHabits = habits
@@ -360,7 +360,7 @@ class HomeViewController: UIViewController {
                     self.updateUI(forLoadingState: false)
                     self.updateProgressState()
                     self.updateCalendarCompletion()
-                    
+
                 case .failure(let error):
                     print("Error loading habits: \(error.localizedDescription)")
                     self.showError(message: "Failed to load your habits")

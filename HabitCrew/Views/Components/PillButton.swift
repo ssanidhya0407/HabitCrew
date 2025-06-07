@@ -51,13 +51,13 @@ class PillButton: UIButton {
     
     // MARK: - Setup
     
-    private func setupButton() {
+    public func setupButton() {
         setupAppearance()
         setupInteractions()
         setupAccessibility()
     }
     
-    private func setupAppearance() {
+    public func setupAppearance() {
         // Apply corner radius
         applyCornerRadius(.button)
         

@@ -21,7 +21,7 @@ class ModernTextField: UIView {
     
     // MARK: - Properties
     
-    private let textField: UITextField = {
+    public let textField: UITextField = {
         let field = UITextField()
         field.font = .body
         field.textColor = .textPrimary
@@ -84,7 +84,7 @@ class ModernTextField: UIView {
     
     var text: String? {
         get { textField.text }
-        set { 
+        set {
             textField.text = newValue
             updateFloatingLabel()
         }
@@ -233,7 +233,7 @@ class ModernTextField: UIView {
         }
     }
     
-    private func animateToFloatingState(_ shouldFloat: Bool) {
+    open func animateToFloatingState(_ shouldFloat: Bool) {
         isFloating = shouldFloat
         
         let topConstant = shouldFloat ? 0 : Spacing.large
@@ -310,13 +310,13 @@ class ModernTextField: UIView {
     
     /// Makes text field first responder
     @discardableResult
-    func becomeFirstResponder() -> Bool {
+    override func becomeFirstResponder() -> Bool {
         return textField.becomeFirstResponder()
     }
     
     /// Resigns first responder
     @discardableResult
-    func resignFirstResponder() -> Bool {
+    override func resignFirstResponder() -> Bool {
         return textField.resignFirstResponder()
     }
     
@@ -342,7 +342,7 @@ class ModernTextField: UIView {
 /// Email text field with built-in validation
 class EmailTextField: ModernTextField {
     
-    override init(frame: CGRect) {
+override    init(frame: CGRect) {
         super.init(frame: frame)
         setupEmailField()
     }
@@ -391,7 +391,7 @@ class PasswordTextField: ModernTextField {
         return button
     }()
     
-    override init(frame: CGRect) {
+override    init(frame: CGRect) {
         super.init(frame: frame)
         setupPasswordField()
     }
@@ -424,8 +424,8 @@ class PasswordTextField: ModernTextField {
         
         // Maintain cursor position
         if let existingText = text, isSecureTextEntry {
-            deleteBackward()
-            insertText(String(existingText.last ?? Character("")))
+            textField.deleteBackward()
+            textField.insertText(String(existingText.last ?? Character("")))
         }
     }
 }

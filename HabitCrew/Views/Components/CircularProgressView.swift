@@ -50,7 +50,7 @@ class CircularProgressView: UIView {
     }
     
     var centerText: String? {
-        didSet { 
+        didSet {
             centerLabel.text = centerText
             centerLabel.isHidden = centerText == nil
         }
@@ -233,18 +233,5 @@ class CircularProgressView: UIView {
     /// Sets progress to 100% with celebration
     func completeProgress(animated: Bool = true) {
         setProgress(1.0, animated: animated)
-    }
-    
-    /// Adds a subtle pulse animation
-    func pulseAnimation() {
-        let pulse = CABasicAnimation(keyPath: "transform.scale")
-        pulse.duration = 0.4
-        pulse.fromValue = 1.0
-        pulse.toValue = 1.05
-        pulse.autoreverses = true
-        pulse.repeatCount = 1
-        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        
-        layer.add(pulse, forKey: "pulse")
     }
 }

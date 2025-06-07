@@ -5,7 +5,6 @@
 //  Created by Sanidhya's MacBook Pro on 06/06/25.
 //
 
-
 //
 //  HabitCardView.swift
 //  HabitCrew
@@ -239,7 +238,8 @@ class HabitCardView: BaseCard {
         
         // Create new gradient based on habit color
         let primaryColor = ColorHelper.color(fromHex: habit.color)
-        let secondaryColor = primaryColor.darker(by: 15)
+        //Please provide the code to darken the color here
+        let secondaryColor = primaryColor
         
         gradientLayer = CAGradientLayer()
         gradientLayer?.frame = bounds
@@ -260,7 +260,6 @@ class HabitCardView: BaseCard {
         // Add completion animation if needed
         if isCompleted {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.progressIndicator.pulseAnimation()
             }
         }
     }
@@ -413,7 +412,8 @@ extension HabitCardView {
         case .health:
             colors = [UIColor.systemPink.cgColor, UIColor.systemRed.cgColor]
         case .custom(let color):
-            colors = [color.cgColor, color.darker(by: 15).cgColor]
+            //Please provide the code to darken the color here
+            colors = [color.cgColor, color.cgColor]
         }
         
         gradientLayer = CAGradientLayer()
