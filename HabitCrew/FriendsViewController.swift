@@ -2,12 +2,9 @@ import UIKit
 import FirebaseAuth
 import FirebaseFirestore
 import FirebaseStorage
-
-
-// MARK: - Main FriendsViewController
+import UserNotifications
 
 // MARK: - Main FriendsViewController
-
 class FriendsViewController: UIViewController {
 
     private let db = Firestore.firestore()
@@ -107,6 +104,7 @@ class FriendsViewController: UIViewController {
         setupGradientBackground()
         setupDecorativeBlobs()
         setupUI()
+        requestLocalNotificationPermission()
         fetchUserProfile()
         listenForFriends()
         listenForRequests()
@@ -207,6 +205,28 @@ class FriendsViewController: UIViewController {
         tableView.register(GroupCardCell.self, forCellReuseIdentifier: "groupcard")
         tableView.dataSource = self
         tableView.delegate = self
+    }
+
+    // MARK: - Local Notification Support
+    private func requestLocalNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error = error {
+                print("Notification permission error:", error)
+            }
+        }
+    }
+
+    func sendInAppNotification(to user: UserProfile, title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Failed to schedule notification:", error)
+            }
+        }
     }
 
     // MARK: - Data
@@ -395,6 +415,69 @@ class FriendsViewController: UIViewController {
         present(chatVC, animated: true)
     }
 }
+
+// MARK: - TableView DataSource/Delegate
+
+extension FriendsViewController: UITableViewDataSource, UITableViewDelegate {
+    func numberOfSections(in tableView: UITableView) -> Int {
+        if !groups.isEmpty { return incomingRequests.isEmpty ? 2 : 3 }
+        return incomingRequests.isEmpty ? 1 : 2
+    }
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        if !groups.isEmpty && section == 0 { return groups.count }
+        if (!groups.isEmpty && !incomingRequests.isEmpty && section == 1) || (groups.isEmpty && !incomingRequests.isEmpty && section == 0) {
+            return incomingRequests.count
+        }
+        return friends.count
+    }
+    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        if !groups.isEmpty && section == 0 { return "Groups" }
+        if (!groups.isEmpty && !incomingRequests.isEmpty && section == 1) || (groups.isEmpty && !incomingRequests.isEmpty && section == 0) {
+            return "Friend Requests"
+        }
+        return "Your Friends"
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        if !groups.isEmpty && indexPath.section == 0 {
+            let group = groups[indexPath.row]
+            let cell = tableView.dequeueReusableCell(withIdentifier: "groupcard", for: indexPath) as! GroupCardCell
+            cell.configure(with: group)
+            return cell
+        }
+        let isRequestSection = (!groups.isEmpty && !incomingRequests.isEmpty && indexPath.section == 1)
+            || (groups.isEmpty && !incomingRequests.isEmpty && indexPath.section == 0)
+        let user = isRequestSection ? incomingRequests[indexPath.row] : friends[indexPath.row]
+        let cell = tableView.dequeueReusableCell(withIdentifier: "friendcard", for: indexPath) as! FriendCardCell
+        cell.configure(with: user, isRequest: isRequestSection)
+        cell.onProfileTap = { [weak self] in self?.showProfile(of: user) }
+        cell.onMessageTap = { [weak self] in self?.showChat(with: user) }
+        cell.onNudgeTap = { [weak self, weak cell] in
+            cell?.blink(color: UIColor.systemYellow.withAlphaComponent(0.34))
+            cell?.layer.borderColor = UIColor.systemYellow.cgColor
+            cell?.layer.borderWidth = 0.35
+            self?.sendInAppNotification(
+                to: user,
+                title: "Nudge 👋",
+                body: "You were nudged by \(self?.userProfile?.displayName ?? "a friend")"
+            )
+        }
+        cell.onCheckinTap = { [weak self, weak cell] in
+            cell?.blink(color: UIColor.systemGreen.withAlphaComponent(0.34))
+            cell?.layer.borderColor = UIColor.systemGreen.cgColor
+            cell?.layer.borderWidth = 0.35
+            self?.sendInAppNotification(
+                to: user,
+                title: "Check-in ✅",
+                body: "\(self?.userProfile?.displayName ?? "A friend") checked in with you!"
+            )
+        }
+        cell.onAcceptTap = { [weak self] in self?.acceptFriendRequest(from: user) }
+        return cell
+    }
+}
+
+// MARK: - TableView DataSource/Delegate
 
 // MARK: - Profile Modal (inner class)
 class ProfileModal: UIViewController {
@@ -626,66 +709,6 @@ class CircleAvatarView: UIView {
     }
 }
 
-// MARK: - TableView DataSource/Delegate
-
-extension FriendsViewController: UITableViewDataSource, UITableViewDelegate {
-    func numberOfSections(in tableView: UITableView) -> Int {
-        if !groups.isEmpty { return incomingRequests.isEmpty ? 2 : 3 }
-        return incomingRequests.isEmpty ? 1 : 2
-    }
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        if !groups.isEmpty && section == 0 { return groups.count }
-        if (!groups.isEmpty && !incomingRequests.isEmpty && section == 1) || (groups.isEmpty && !incomingRequests.isEmpty && section == 0) {
-            return incomingRequests.count
-        }
-        return friends.count
-    }
-    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        if !groups.isEmpty && section == 0 { return "Groups" }
-        if (!groups.isEmpty && !incomingRequests.isEmpty && section == 1) || (groups.isEmpty && !incomingRequests.isEmpty && section == 0) {
-            return "Friend Requests"
-        }
-        return "Your Friends"
-    }
-
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        if !groups.isEmpty && indexPath.section == 0 {
-            let group = groups[indexPath.row]
-            let cell = tableView.dequeueReusableCell(withIdentifier: "groupcard", for: indexPath) as! GroupCardCell
-            cell.configure(with: group)
-            return cell
-        }
-        let isRequestSection = (!groups.isEmpty && !incomingRequests.isEmpty && indexPath.section == 1)
-            || (groups.isEmpty && !incomingRequests.isEmpty && indexPath.section == 0)
-        let user = isRequestSection ? incomingRequests[indexPath.row] : friends[indexPath.row]
-        let cell = tableView.dequeueReusableCell(withIdentifier: "friendcard", for: indexPath) as! FriendCardCell
-        cell.configure(with: user, isRequest: isRequestSection)
-        cell.onProfileTap = { [weak self] in self?.showProfile(of: user) }
-        cell.onMessageTap = { [weak self] in self?.showChat(with: user) }
-        cell.onNudgeTap = { [weak self, weak cell] in
-            cell?.blink(color: UIColor.systemYellow.withAlphaComponent(0.34))
-            cell?.layer.borderColor = UIColor.systemYellow.cgColor
-            cell?.layer.borderWidth = 0.35
-            self?.sendInAppNotification(
-                to: user,
-                title: "Nudge 👋",
-                body: "You were nudged by \(self?.userProfile?.displayName ?? "a friend")"
-            )
-        }
-        cell.onCheckinTap = { [weak self, weak cell] in
-            cell?.blink(color: UIColor.systemGreen.withAlphaComponent(0.34))
-            cell?.layer.borderColor = UIColor.systemGreen.cgColor
-            cell?.layer.borderWidth = 0.35
-            self?.sendInAppNotification(
-                to: user,
-                title: "Check-in ✅",
-                body: "\(self?.userProfile?.displayName ?? "A friend") checked in with you!"
-            )
-        }
-        cell.onAcceptTap = { [weak self] in self?.acceptFriendRequest(from: user) }
-        return cell
-    }
-}
 
 // MARK: - GroupCardCell
 
@@ -945,6 +968,18 @@ class FriendCardCell: UITableViewCell {
         button.layer.add(animation, forKey: "borderColorFlash")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             button.layer.borderColor = defaultColor
+        }
+    }
+
+    /// Optionally blink the whole card background with a color (for legacy code)
+    func blink(color: UIColor) {
+        let originalColor = card.backgroundColor
+        UIView.animate(withDuration: 0.15, animations: {
+            self.card.backgroundColor = color
+        }) { _ in
+            UIView.animate(withDuration: 0.15, animations: {
+                self.card.backgroundColor = originalColor
+            })
         }
     }
 
@@ -1874,21 +1909,3 @@ class FriendProfileViewController: UIViewController {
 }
 
 
-extension FriendsViewController {
-    /// Sends a simple in-app notification to a friend (using Firestore "notifications" collection per user)
-    func sendInAppNotification(to user: UserProfile, title: String, body: String) {
-        guard let myProfile = self.userProfile else { return }
-        let notif: [String: Any] = [
-            "fromUid": myProfile.uid,
-            "fromName": myProfile.displayName,
-            "timestamp": FieldValue.serverTimestamp(),
-            "title": title,
-            "body": body,
-            "type": "friend_action",
-            "read": false
-        ]
-        db.collection("users").document(user.uid)
-            .collection("notifications")
-            .addDocument(data: notif)
-    }
-}
