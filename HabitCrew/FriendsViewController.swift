@@ -6,6 +6,8 @@ import FirebaseStorage
 
 // MARK: - Main FriendsViewController
 
+// MARK: - Main FriendsViewController
+
 class FriendsViewController: UIViewController {
 
     private let db = Firestore.firestore()
@@ -21,7 +23,6 @@ class FriendsViewController: UIViewController {
     private let gradientLayer = CAGradientLayer()
     private let decorativeBlob1 = UIView()
     private let decorativeBlob2 = UIView()
-
     private let greetingLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: 32, weight: .bold)
@@ -332,18 +333,296 @@ class FriendsViewController: UIViewController {
             .delete()
     }
 
+    // MARK: - Profile Modal Integration
     private func showProfile(of user: UserProfile) {
-        let profileVC = FriendProfileViewController(user: user, canMessage: friends.contains(where: {$0.uid == user.uid}))
-        profileVC.onMessageTap = { [weak self] in
-            self?.showChat(with: user)
-        }
-        present(profileVC, animated: true)
+        let canMsg = friends.contains(where: { $0.uid == user.uid })
+        var modal: ProfileModal? = nil
+        modal = ProfileModal(
+            user: user,
+            canMessage: canMsg,
+            onMessage: { [weak self] in
+                self?.showChat(with: user)
+            },
+            onNudge: { [weak self, weak modal] in
+                guard let self = self, let me = self.userProfile else { return }
+                let nudgeMsg = HabitMessage(
+                    id: UUID().uuidString,
+                    senderId: me.uid,
+                    timestamp: Date(),
+                    type: .nudge,
+                    content: "👋 \(me.displayName) nudged you!",
+                    audioURL: nil,
+                    checkinData: nil,
+                    summaryData: nil,
+                    pollData: nil,
+                    reactions: nil
+                )
+                let chatVC = ChatViewController(friend: user, me: me)
+                chatVC.sendMessage(nudgeMsg)
+                let alert = UIAlertController(title: "Nudge Sent!", message: "A nudge was sent to \(user.displayName).", preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                modal?.present(alert, animated: true)
+            },
+            onCheckin: { [weak self, weak modal] in
+                guard let self = self, let me = self.userProfile else { return }
+                let checkinData = CheckinData(habitName: "Daily Habit", date: Date(), status: "pending", note: nil)
+                let checkinMsg = HabitMessage(
+                    id: UUID().uuidString,
+                    senderId: me.uid,
+                    timestamp: Date(),
+                    type: .checkin,
+                    content: "Check-in time!",
+                    audioURL: nil,
+                    checkinData: checkinData,
+                    summaryData: nil,
+                    pollData: nil,
+                    reactions: nil
+                )
+                let chatVC = ChatViewController(friend: user, me: me)
+                chatVC.sendMessage(checkinMsg)
+                let alert = UIAlertController(title: "Check-in Sent!", message: "A check-in was sent to \(user.displayName).", preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                modal?.present(alert, animated: true)
+            }
+        )
+        present(modal!, animated: true)
     }
 
     private func showChat(with user: UserProfile) {
-        let chatVC = ChatViewController(friend: user)
-        chatVC.me = self.userProfile
+        guard let me = self.userProfile else { return }
+        let chatVC = ChatViewController(friend: user, me: me)
+        chatVC.modalPresentationStyle = .fullScreen
         present(chatVC, animated: true)
+    }
+}
+
+// MARK: - Profile Modal (inner class)
+class ProfileModal: UIViewController {
+    let user: UserProfile
+    let canMessage: Bool
+    let onMessage: (() -> Void)?
+    let onNudge: (() -> Void)?
+    let onCheckin: (() -> Void)?
+
+    init(user: UserProfile, canMessage: Bool, onMessage: (() -> Void)?, onNudge: (() -> Void)?, onCheckin: (() -> Void)?) {
+        self.user = user
+        self.canMessage = canMessage
+        self.onMessage = onMessage
+        self.onNudge = onNudge
+        self.onCheckin = onCheckin
+        super.init(nibName: nil, bundle: nil)
+        modalPresentationStyle = .formSheet
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = UIColor.systemBackground
+        setupUI()
+    }
+
+    private func setupUI() {
+        let avatar = CircleAvatarView()
+        avatar.setInitials(user.displayName)
+        avatar.translatesAutoresizingMaskIntoConstraints = false
+        avatar.layer.cornerRadius = 48
+        avatar.layer.masksToBounds = true
+
+        let nameLabel = UILabel()
+        nameLabel.text = user.displayName
+        nameLabel.font = .systemFont(ofSize: 28, weight: .bold)
+        nameLabel.textAlignment = .center
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let stack = UIStackView(arrangedSubviews: [avatar, nameLabel])
+        stack.axis = .vertical
+        stack.spacing = 20
+        stack.alignment = .center
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 48)
+        ])
+
+        if canMessage {
+            let msgBtn = UIButton(type: .system)
+            msgBtn.setTitle("Message", for: .normal)
+            msgBtn.setTitleColor(.white, for: .normal)
+            msgBtn.backgroundColor = .systemBlue
+            msgBtn.layer.cornerRadius = 24
+            msgBtn.layer.cornerCurve = .continuous
+            msgBtn.titleLabel?.font = .systemFont(ofSize: 18, weight: .semibold)
+            msgBtn.translatesAutoresizingMaskIntoConstraints = false
+            msgBtn.heightAnchor.constraint(equalToConstant: 48).isActive = true
+            msgBtn.widthAnchor.constraint(equalToConstant: 120).isActive = true
+            msgBtn.addTarget(self, action: #selector(msgTapped), for: .touchUpInside)
+
+            let nudgeBtn = CircleActionButton(
+                icon: UIImage(systemName: "hand.wave.fill"),
+                bgColor: .systemBackground,
+                borderColor: .systemYellow,
+                borderWidth: 3,
+                iconColor: .systemYellow
+            )
+            nudgeBtn.accessibilityLabel = "Nudge"
+            nudgeBtn.addTarget(self, action: #selector(nudgeTapped), for: .touchUpInside)
+            nudgeBtn.addAction(UIAction { _ in
+                nudgeBtn.pulse(borderColor: .systemYellow)
+            }, for: .touchUpInside)
+
+            let checkinBtn = CircleActionButton(
+                icon: UIImage(systemName: "checkmark.seal.fill"),
+                bgColor: UIColor.systemGreen.withAlphaComponent(0.14),
+                borderColor: .systemGreen,
+                borderWidth: 2,
+                iconColor: .systemGreen
+            )
+            checkinBtn.accessibilityLabel = "Check-in"
+            checkinBtn.addTarget(self, action: #selector(checkinTapped), for: .touchUpInside)
+            checkinBtn.addAction(UIAction { _ in
+                checkinBtn.confettiBurst()
+            }, for: .touchUpInside)
+
+            let hstack = UIStackView(arrangedSubviews: [nudgeBtn, msgBtn, checkinBtn])
+            hstack.axis = .horizontal
+            hstack.spacing = 20
+            hstack.distribution = .equalCentering
+            hstack.alignment = .center
+            hstack.translatesAutoresizingMaskIntoConstraints = false
+            stack.addArrangedSubview(hstack)
+
+            NSLayoutConstraint.activate([
+                nudgeBtn.widthAnchor.constraint(equalToConstant: 56),
+                nudgeBtn.heightAnchor.constraint(equalTo: nudgeBtn.widthAnchor),
+                checkinBtn.widthAnchor.constraint(equalToConstant: 56),
+                checkinBtn.heightAnchor.constraint(equalTo: checkinBtn.widthAnchor)
+            ])
+        }
+    }
+
+    @objc private func msgTapped() { onMessage?() }
+    @objc private func nudgeTapped() { onNudge?() }
+    @objc private func checkinTapped() { onCheckin?() }
+}
+
+// MARK: - CircleActionButton
+class CircleActionButton: UIButton {
+    private let iconView: UIImageView
+
+    init(icon: UIImage?, bgColor: UIColor, borderColor: UIColor, borderWidth: CGFloat, iconColor: UIColor) {
+        iconView = UIImageView(image: icon?.withRenderingMode(.alwaysTemplate))
+        iconView.tintColor = iconColor
+        iconView.contentMode = .scaleAspectFit
+        super.init(frame: .zero)
+        backgroundColor = bgColor
+        layer.cornerRadius = 28
+        layer.masksToBounds = false
+        layer.borderWidth = borderWidth
+        layer.borderColor = borderColor.cgColor
+        translatesAutoresizingMaskIntoConstraints = false
+        addSubview(iconView)
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            iconView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 26),
+            iconView.heightAnchor.constraint(equalTo: iconView.widthAnchor)
+        ])
+        layer.shadowColor = borderColor.withAlphaComponent(0.22).cgColor
+        layer.shadowOpacity = 1
+        layer.shadowOffset = CGSize(width: 0, height: 2)
+        layer.shadowRadius = 6
+    }
+    required init?(coder: NSCoder) { fatalError() }
+}
+extension CircleActionButton {
+    func pulse(borderColor: UIColor) {
+        let pulse = CASpringAnimation(keyPath: "transform.scale")
+        pulse.fromValue = 1.0
+        pulse.toValue = 1.17
+        pulse.duration = 0.21
+        pulse.autoreverses = true
+        pulse.initialVelocity = 0.4
+        pulse.damping = 0.8
+        layer.add(pulse, forKey: "pulse")
+        let oldColor = layer.borderColor
+        layer.borderColor = UIColor.systemYellow.cgColor
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            self.layer.borderColor = oldColor
+        }
+    }
+    func confettiBurst() {
+        let emitter = CAEmitterLayer()
+        emitter.emitterPosition = CGPoint(x: bounds.midX, y: bounds.maxY)
+        emitter.emitterShape = .line
+        emitter.emitterSize = CGSize(width: bounds.width * 0.6, height: 1)
+        let colors: [UIColor] = [.systemGreen, .systemYellow, .systemBlue, .systemPink]
+        let emojis = ["✅", "🎉", "😃", "🌟"]
+        var cells: [CAEmitterCell] = []
+        for i in 0..<4 {
+            let cell = CAEmitterCell()
+            cell.birthRate = 2
+            cell.lifetime = 1.2
+            cell.velocity = 80
+            cell.velocityRange = 20
+            cell.emissionLongitude = .pi
+            cell.emissionRange = 1.2
+            cell.spin = 1
+            cell.spinRange = 1
+            cell.scale = 0.9
+            cell.scaleRange = 0.2
+            cell.contents = NSAttributedString(string: emojis[i % emojis.count], attributes: [.font: UIFont.systemFont(ofSize: 24)]).image()?.cgImage
+            cell.color = colors[i % colors.count].cgColor
+            cells.append(cell)
+        }
+        emitter.emitterCells = cells
+        layer.addSublayer(emitter)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            emitter.birthRate = 0
+            emitter.removeFromSuperlayer()
+        }
+    }
+}
+extension NSAttributedString {
+    func image() -> UIImage? {
+        let size = CGSize(width: 28, height: 28)
+        UIGraphicsBeginImageContextWithOptions(size, false, 0)
+        draw(in: CGRect(origin: .zero, size: size))
+        let img = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return img
+    }
+}
+
+// MARK: - CircleAvatarView
+class CircleAvatarView: UIView {
+    private let label = UILabel()
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setup()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    private func setup() {
+        backgroundColor = UIColor.systemGray5
+        layer.cornerRadius = 24
+        layer.masksToBounds = true
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = UIFont.systemFont(ofSize: 22, weight: .bold)
+        label.textAlignment = .center
+        label.textColor = .systemBlue
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            label.widthAnchor.constraint(equalTo: widthAnchor),
+            label.heightAnchor.constraint(equalTo: heightAnchor)
+        ])
+    }
+    func setInitials(_ name: String) {
+        let comps = name.split(separator: " ")
+        let initials = comps.prefix(2).compactMap { $0.first }.map { String($0) }.joined()
+        label.text = initials.uppercased()
     }
 }
 
@@ -368,6 +647,7 @@ extension FriendsViewController: UITableViewDataSource, UITableViewDelegate {
         }
         return "Your Friends"
     }
+
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         if !groups.isEmpty && indexPath.section == 0 {
             let group = groups[indexPath.row]
@@ -375,19 +655,34 @@ extension FriendsViewController: UITableViewDataSource, UITableViewDelegate {
             cell.configure(with: group)
             return cell
         }
+        let isRequestSection = (!groups.isEmpty && !incomingRequests.isEmpty && indexPath.section == 1)
+            || (groups.isEmpty && !incomingRequests.isEmpty && indexPath.section == 0)
+        let user = isRequestSection ? incomingRequests[indexPath.row] : friends[indexPath.row]
         let cell = tableView.dequeueReusableCell(withIdentifier: "friendcard", for: indexPath) as! FriendCardCell
-        let isRequestsSection = (!groups.isEmpty && !incomingRequests.isEmpty && indexPath.section == 1) || (groups.isEmpty && !incomingRequests.isEmpty && indexPath.section == 0)
-        if isRequestsSection {
-            let user = incomingRequests[indexPath.row]
-            cell.configure(with: user, showButton: true, buttonTitle: "Accept")
-            cell.onProfileTap = { [weak self] in self?.showProfile(of: user) }
-            cell.onButtonTap = { [weak self] in self?.acceptFriendRequest(from: user) }
-        } else {
-            let user = friends[indexPath.row]
-            cell.configure(with: user, showButton: true, buttonTitle: "Message")
-            cell.onProfileTap = { [weak self] in self?.showProfile(of: user) }
-            cell.onButtonTap = { [weak self] in self?.showChat(with: user) }
+        cell.configure(with: user, isRequest: isRequestSection)
+        cell.onProfileTap = { [weak self] in self?.showProfile(of: user) }
+        cell.onMessageTap = { [weak self] in self?.showChat(with: user) }
+        cell.onNudgeTap = { [weak self, weak cell] in
+            cell?.blink(color: UIColor.systemYellow.withAlphaComponent(0.34))
+            cell?.layer.borderColor = UIColor.systemYellow.cgColor
+            cell?.layer.borderWidth = 0.35
+            self?.sendInAppNotification(
+                to: user,
+                title: "Nudge 👋",
+                body: "You were nudged by \(self?.userProfile?.displayName ?? "a friend")"
+            )
         }
+        cell.onCheckinTap = { [weak self, weak cell] in
+            cell?.blink(color: UIColor.systemGreen.withAlphaComponent(0.34))
+            cell?.layer.borderColor = UIColor.systemGreen.cgColor
+            cell?.layer.borderWidth = 0.35
+            self?.sendInAppNotification(
+                to: user,
+                title: "Check-in ✅",
+                body: "\(self?.userProfile?.displayName ?? "A friend") checked in with you!"
+            )
+        }
+        cell.onAcceptTap = { [weak self] in self?.acceptFriendRequest(from: user) }
         return cell
     }
 }
@@ -469,12 +764,24 @@ class GroupCardCell: UITableViewCell {
 // MARK: - FriendCardCell
 
 class FriendCardCell: UITableViewCell {
-    private let card = UIView()
-    private let avatar = CircleAvatarView()
-    private let nameLabel = UILabel()
-    private let actionButton = UIButton(type: .system)
-    var onButtonTap: (() -> Void)?
+    let card = UIView()
+    let avatar = CircleAvatarView()
+    let nameLabel = UILabel()
+    let nudgeButton = UIButton(type: .system)
+    let checkinButton = UIButton(type: .system)
+    let messageButton = UIButton(type: .system)
+    let acceptButton = UIButton(type: .system)
+    var onMessageTap: (() -> Void)?
+    var onNudgeTap: (() -> Void)?
+    var onCheckinTap: (() -> Void)?
     var onProfileTap: (() -> Void)?
+    var onAcceptTap: (() -> Void)?
+    private var isRequestCell = false
+
+    // Keep track of default border colors
+    private let nudgeBorderColor = UIColor.systemYellow.cgColor
+    private let checkinBorderColor = UIColor.systemGreen.cgColor
+    private let messageBorderColor = UIColor.systemBlue.cgColor
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -482,11 +789,27 @@ class FriendCardCell: UITableViewCell {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(with user: UserProfile, showButton: Bool, buttonTitle: String) {
+    func configure(with user: UserProfile, isRequest: Bool) {
         avatar.setInitials(user.displayName)
         nameLabel.text = user.displayName
-        actionButton.isHidden = !showButton
-        actionButton.setTitle(buttonTitle, for: .normal)
+        isRequestCell = isRequest
+        if isRequest {
+            // Show only rectangular Accept, hide icons.
+            acceptButton.isHidden = false
+            nudgeButton.isHidden = true
+            checkinButton.isHidden = true
+            messageButton.isHidden = true
+        } else {
+            // Show 3 circular icons, hide Accept.
+            acceptButton.isHidden = true
+            nudgeButton.isHidden = false
+            checkinButton.isHidden = false
+            messageButton.isHidden = false
+            // Restore default border colors
+            nudgeButton.layer.borderColor = nudgeBorderColor
+            checkinButton.layer.borderColor = checkinBorderColor
+            messageButton.layer.borderColor = messageBorderColor
+        }
     }
 
     private func setup() {
@@ -500,19 +823,72 @@ class FriendCardCell: UITableViewCell {
 
         avatar.translatesAutoresizingMaskIntoConstraints = false
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
-        actionButton.translatesAutoresizingMaskIntoConstraints = false
-        nameLabel.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
-        actionButton.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        actionButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.12)
-        actionButton.setTitleColor(.systemBlue, for: .normal)
-        actionButton.layer.cornerRadius = 10
-        actionButton.layer.cornerCurve = .continuous
-        actionButton.layer.masksToBounds = true
-        actionButton.contentEdgeInsets = UIEdgeInsets(top: 7, left: 14, bottom: 7, right: 14)
+
+        // Nudge Button (circle icon)
+        nudgeButton.backgroundColor = UIColor.systemYellow.withAlphaComponent(0.19)
+        nudgeButton.layer.cornerRadius = 24
+        nudgeButton.layer.borderWidth = 2.0
+        nudgeButton.layer.borderColor = nudgeBorderColor
+        nudgeButton.layer.masksToBounds = true
+        nudgeButton.translatesAutoresizingMaskIntoConstraints = false
+        nudgeButton.widthAnchor.constraint(equalToConstant: 48).isActive = true
+        nudgeButton.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        nudgeButton.setImage(UIImage(systemName: "hand.wave.fill"), for: .normal)
+        nudgeButton.imageView?.tintColor = .systemYellow
+        nudgeButton.addTarget(self, action: #selector(nudgeTapped), for: .touchUpInside)
+
+        // Check-in Button (circle icon)
+        checkinButton.backgroundColor = UIColor.systemGreen.withAlphaComponent(0.19)
+        checkinButton.layer.cornerRadius = 24
+        checkinButton.layer.borderWidth = 2.0
+        checkinButton.layer.borderColor = checkinBorderColor
+        checkinButton.layer.masksToBounds = true
+        checkinButton.translatesAutoresizingMaskIntoConstraints = false
+        checkinButton.widthAnchor.constraint(equalToConstant: 48).isActive = true
+        checkinButton.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        checkinButton.setImage(UIImage(systemName: "checkmark.seal.fill"), for: .normal)
+        checkinButton.imageView?.tintColor = .systemGreen
+        checkinButton.addTarget(self, action: #selector(checkinTapped), for: .touchUpInside)
+
+        // Message Button (circle icon)
+        messageButton.setTitle("", for: .normal)
+        messageButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.12)
+        messageButton.setImage(UIImage(systemName: "bubble.left.and.bubble.right.fill"), for: .normal)
+        messageButton.imageView?.tintColor = .systemBlue
+        messageButton.layer.cornerRadius = 24
+        messageButton.layer.cornerCurve = .continuous
+        messageButton.layer.masksToBounds = true
+        messageButton.layer.borderWidth = 2.0
+        messageButton.layer.borderColor = messageBorderColor
+        messageButton.translatesAutoresizingMaskIntoConstraints = false
+        messageButton.widthAnchor.constraint(equalToConstant: 48).isActive = true
+        messageButton.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        messageButton.addTarget(self, action: #selector(messageTapped), for: .touchUpInside)
+
+        // Accept Button (rectangular)
+        acceptButton.setTitle("Accept", for: .normal)
+        acceptButton.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        acceptButton.backgroundColor = UIColor.white
+        acceptButton.setTitleColor(.systemBlue, for: .normal)
+        acceptButton.layer.cornerRadius = 13
+        acceptButton.layer.cornerCurve = .continuous
+        acceptButton.layer.borderWidth = 2.0
+        acceptButton.layer.borderColor = UIColor.systemBlue.cgColor
+        acceptButton.layer.masksToBounds = true
+        acceptButton.translatesAutoresizingMaskIntoConstraints = false
+        acceptButton.widthAnchor.constraint(equalToConstant: 90).isActive = true
+        acceptButton.heightAnchor.constraint(equalToConstant: 40).isActive = true
+        acceptButton.addTarget(self, action: #selector(acceptTapped), for: .touchUpInside)
 
         card.addSubview(avatar)
         card.addSubview(nameLabel)
-        card.addSubview(actionButton)
+        card.addSubview(acceptButton)
+
+        let buttonStack = UIStackView(arrangedSubviews: [nudgeButton, checkinButton, messageButton])
+        buttonStack.axis = .horizontal
+        buttonStack.spacing = 12
+        buttonStack.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(buttonStack)
 
         NSLayoutConstraint.activate([
             card.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 6),
@@ -528,8 +904,11 @@ class FriendCardCell: UITableViewCell {
             nameLabel.leadingAnchor.constraint(equalTo: avatar.trailingAnchor, constant: 16),
             nameLabel.centerYAnchor.constraint(equalTo: card.centerYAnchor),
 
-            actionButton.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
-            actionButton.centerYAnchor.constraint(equalTo: card.centerYAnchor)
+            buttonStack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
+            buttonStack.centerYAnchor.constraint(equalTo: card.centerYAnchor),
+
+            acceptButton.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
+            acceptButton.centerYAnchor.constraint(equalTo: card.centerYAnchor)
         ])
 
         avatar.isUserInteractionEnabled = true
@@ -537,41 +916,41 @@ class FriendCardCell: UITableViewCell {
         let tap = UITapGestureRecognizer(target: self, action: #selector(profileTapped))
         avatar.addGestureRecognizer(tap)
         nameLabel.addGestureRecognizer(tap)
-        actionButton.addTarget(self, action: #selector(buttonTapped), for: .touchUpInside)
     }
-    @objc private func buttonTapped() { onButtonTap?() }
+
+    @objc private func messageTapped() { onMessageTap?() }
+    @objc private func nudgeTapped() { onNudgeTap?() }
+    @objc private func checkinTapped() { onCheckinTap?() }
     @objc private func profileTapped() { onProfileTap?() }
-}
+    @objc private func acceptTapped() { onAcceptTap?() }
 
-// MARK: - CircleAvatarView
+    /// Blinks the card and highlights the corresponding button border
+    func blinkButtonBorder(for type: ActionType) {
+        switch type {
+        case .nudge:
+            blinkBorder(button: nudgeButton, highlightColor: UIColor.systemYellow.cgColor, defaultColor: nudgeBorderColor)
+        case .checkin:
+            blinkBorder(button: checkinButton, highlightColor: UIColor.systemGreen.cgColor, defaultColor: checkinBorderColor)
+        }
+    }
 
-class CircleAvatarView: UIView {
-    private let label = UILabel()
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        setup()
+    private func blinkBorder(button: UIButton, highlightColor: CGColor, defaultColor: CGColor) {
+        let animation = CABasicAnimation(keyPath: "borderColor")
+        animation.fromValue = highlightColor
+        animation.toValue = defaultColor
+        animation.duration = 0.15
+        animation.autoreverses = true
+        animation.repeatCount = 2
+        button.layer.borderColor = highlightColor
+        button.layer.add(animation, forKey: "borderColorFlash")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            button.layer.borderColor = defaultColor
+        }
     }
-    required init?(coder: NSCoder) { fatalError() }
-    private func setup() {
-        backgroundColor = UIColor.systemGray5
-        layer.cornerRadius = 24
-        layer.masksToBounds = true
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = UIFont.systemFont(ofSize: 22, weight: .bold)
-        label.textAlignment = .center
-        label.textColor = .systemBlue
-        addSubview(label)
-        NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            label.widthAnchor.constraint(equalTo: widthAnchor),
-            label.heightAnchor.constraint(equalTo: heightAnchor)
-        ])
-    }
-    func setInitials(_ name: String) {
-        let comps = name.split(separator: " ")
-        let initials = comps.prefix(2).compactMap { $0.first }.map { String($0) }.joined()
-        label.text = initials.uppercased()
+
+    enum ActionType {
+        case nudge
+        case checkin
     }
 }
 
@@ -1099,18 +1478,6 @@ class ConfettiView: UIView {
     }
 }
 
-// Helper to convert NSAttributedString emoji to UIImage for CAEmitterCell
-extension NSAttributedString {
-    func image() -> UIImage? {
-        let size = CGSize(width: 36, height: 36)
-        UIGraphicsBeginImageContextWithOptions(size, false, 0)
-        draw(in: CGRect(origin: .zero, size: size))
-        let img = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        return img
-    }
-}
-
 
 // MARK: - FriendSearchModal
 
@@ -1507,3 +1874,21 @@ class FriendProfileViewController: UIViewController {
 }
 
 
+extension FriendsViewController {
+    /// Sends a simple in-app notification to a friend (using Firestore "notifications" collection per user)
+    func sendInAppNotification(to user: UserProfile, title: String, body: String) {
+        guard let myProfile = self.userProfile else { return }
+        let notif: [String: Any] = [
+            "fromUid": myProfile.uid,
+            "fromName": myProfile.displayName,
+            "timestamp": FieldValue.serverTimestamp(),
+            "title": title,
+            "body": body,
+            "type": "friend_action",
+            "read": false
+        ]
+        db.collection("users").document(user.uid)
+            .collection("notifications")
+            .addDocument(data: notif)
+    }
+}

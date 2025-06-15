@@ -11,20 +11,33 @@ import Foundation
 struct UserProfile {
     let uid: String
     let displayName: String
+    let isOnline: Bool?        // Optional, not always present
+    let lastSeen: Date?        // Optional
+
     var dictionary: [String: Any] {
-        ["uid": uid, "displayName": displayName]
+        [
+            "uid": uid,
+            "displayName": displayName,
+            "isOnline": isOnline as Any,
+            "lastSeen": lastSeen?.timeIntervalSince1970 as Any
+        ]
     }
-    init(uid: String, displayName: String) {
+    init(uid: String, displayName: String, isOnline: Bool? = nil, lastSeen: Date? = nil) {
         self.uid = uid
         self.displayName = displayName
+        self.isOnline = isOnline
+        self.lastSeen = lastSeen
     }
     init?(from dict: [String: Any]) {
         guard let uid = dict["uid"] as? String else { return nil }
-        if let displayName = dict["displayName"] as? String ?? dict["name"] as? String {
-            self.uid = uid
-            self.displayName = displayName
+        let displayName = dict["displayName"] as? String ?? dict["name"] as? String
+        self.uid = uid
+        self.displayName = displayName ?? "Unknown"
+        self.isOnline = dict["isOnline"] as? Bool
+        if let lastSeen = dict["lastSeen"] as? Double {
+            self.lastSeen = Date(timeIntervalSince1970: lastSeen)
         } else {
-            return nil
+            self.lastSeen = nil
         }
     }
 }
