@@ -217,6 +217,7 @@ class FriendsViewController: UIViewController {
     }
 
     func sendInAppNotification(to user: UserProfile, title: String, body: String) {
+        print("Scheduling notification \(title): \(body)")
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body

@@ -447,7 +447,7 @@ class HabitCardCell: UITableViewCell {
 
     func configure(with habit: Habit) {
         let color = UIColor(hex: habit.colorHex) ?? .systemBlue
-        card.backgroundColor = color.withAlphaComponent(habit.isDoneToday() ? 0.3 : 0.13)
+        card.backgroundColor = color.withAlphaComponent(habit.isDoneToday() ? 0.13 : 0.13) // All cards same shade
         iconView.image = UIImage(systemName: habit.icon)?.withRenderingMode(.alwaysTemplate)
         iconView.tintColor = color
         titleLabel.text = habit.title
@@ -464,7 +464,7 @@ class HabitCardCell: UITableViewCell {
             lbl.text = day
             lbl.font = UIFont.systemFont(ofSize: 13.5, weight: .semibold)
             lbl.textAlignment = .center
-            lbl.textColor = isActive ? .white : .label
+            lbl.textColor = isActive ? .white : UIColor(white: 0.67, alpha: 1)
             lbl.backgroundColor = isActive ? color : UIColor.systemGray5
             lbl.layer.cornerRadius = 12
             lbl.layer.masksToBounds = true
@@ -486,7 +486,6 @@ class HabitCardCell: UITableViewCell {
         card.translatesAutoresizingMaskIntoConstraints = false
         card.layer.cornerRadius = 19
         card.layer.masksToBounds = true
-        card.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.12)
         contentView.addSubview(card)
         card.addSubview(iconView)
         card.addSubview(titleLabel)
@@ -498,26 +497,30 @@ class HabitCardCell: UITableViewCell {
         iconView.contentMode = .scaleAspectFit
         iconView.widthAnchor.constraint(equalToConstant: 36).isActive = true
         iconView.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
         titleLabel.textColor = .label
+        
         noteLabel.translatesAutoresizingMaskIntoConstraints = false
         noteLabel.font = UIFont.systemFont(ofSize: 14, weight: .regular)
         noteLabel.textColor = .secondaryLabel
         noteLabel.numberOfLines = 1
+        
         daysStack.axis = .horizontal
         daysStack.spacing = 5
         daysStack.translatesAutoresizingMaskIntoConstraints = false
         daysStack.alignment = .center
         daysStack.distribution = .fill
+        
         timeLabel.translatesAutoresizingMaskIntoConstraints = false
         timeLabel.textAlignment = .right
 
         NSLayoutConstraint.activate([
-            card.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 6),
-            card.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -6),
-            card.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 0),
-            card.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: 0),
+            card.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 10),
+            card.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -10),
+            card.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 10),
+            card.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -10),
 
             iconView.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
             iconView.centerYAnchor.constraint(equalTo: card.centerYAnchor),
