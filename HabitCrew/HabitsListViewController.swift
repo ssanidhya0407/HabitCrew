@@ -223,8 +223,8 @@ class HabitsListViewController: UIViewController {
         motivationButtonStack.addArrangedSubview(readMotivationButton)
         NSLayoutConstraint.activate([
             motivationCard.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 16),
-            motivationCard.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            motivationCard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            motivationCard.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            motivationCard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
         ])
         NSLayoutConstraint.activate([
             motivationLabel.topAnchor.constraint(equalTo: motivationCard.topAnchor, constant: 16),
@@ -245,19 +245,19 @@ class HabitsListViewController: UIViewController {
         // Add Habit Button at bottom
         view.addSubview(addHabitButton)
         NSLayoutConstraint.activate([
-            addHabitButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
-            addHabitButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28),
+            addHabitButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            addHabitButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
             addHabitButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -18),
-            addHabitButton.heightAnchor.constraint(equalToConstant: 56)
+            addHabitButton.heightAnchor.constraint(equalToConstant: 65)
         ])
 
         // Card background & blur
         view.addSubview(cardView)
         cardView.addSubview(blurView)
         NSLayoutConstraint.activate([
-            cardView.topAnchor.constraint(equalTo: motivationCard.bottomAnchor, constant: 16),
-            cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            cardView.topAnchor.constraint(equalTo: motivationCard.bottomAnchor, constant: 10),
+            cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 0),
+            cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: 0),
             cardView.bottomAnchor.constraint(equalTo: addHabitButton.topAnchor, constant: -18)
         ])
         NSLayoutConstraint.activate([
@@ -276,8 +276,8 @@ class HabitsListViewController: UIViewController {
             tableView.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -8)
         ])
 
-        tableView.contentInset = UIEdgeInsets(top: 10, left: 0, bottom: 0, right: 0)
-        tableView.rowHeight = 88
+        tableView.contentInset = UIEdgeInsets(top: 5, left: 0, bottom: 0, right: 0)
+        tableView.rowHeight = 100
         tableView.register(HabitCardCell.self, forCellReuseIdentifier: "habitcard")
 
         addHabitButton.addTarget(self, action: #selector(addHabitTapped), for: .touchUpInside)
@@ -447,7 +447,7 @@ class HabitCardCell: UITableViewCell {
 
     func configure(with habit: Habit) {
         let color = UIColor(hex: habit.colorHex) ?? .systemBlue
-        card.backgroundColor = color.withAlphaComponent(habit.isDoneToday() ? 0.13 : 0.13) // All cards same shade
+        card.backgroundColor = color.withAlphaComponent(habit.isDoneToday() ? 0.3 : 0.13) // All cards same shade
         iconView.image = UIImage(systemName: habit.icon)?.withRenderingMode(.alwaysTemplate)
         iconView.tintColor = color
         titleLabel.text = habit.title
@@ -582,4 +582,8 @@ private extension UIColor {
         }
         self.init(red: r, green: g, blue: b, alpha: 1)
     }
+}
+
+#Preview(){
+    HabitsListViewController()
 }

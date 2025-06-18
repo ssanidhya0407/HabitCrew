@@ -4,18 +4,23 @@ import FirebaseFirestore
 
 // MARK: - MAIN VIEW CONTROLLER
 
-
 class AnalyticsViewController: UIViewController, UITableViewDelegate, UITableViewDataSource {
     // UI Elements
     private let gradientLayer = CAGradientLayer()
     private let decorativeBlob1 = UIView()
     private let decorativeBlob2 = UIView()
+    private let calendarHeaderContainer = UIView()
+    private var calendarHeaderTop: NSLayoutConstraint!
+    private var calendarHeaderHeight: NSLayoutConstraint!
 
     private let header = AnalyticsHeader(title: "Progress 📈", subtitle: "See your habit journey")
     private let motivationCard = MotivationCard()
     private let calendarCard = CalendarCardView()
     private let analyticsTable = UITableView()
     private var habits: [AnalyticsHabit] = []
+
+    private let collapsedCalendarHeight: CGFloat = 90      // Collapsed (row) height
+    private let expandedCalendarHeight: CGFloat = 312      // Expanded calendar height
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -78,14 +83,27 @@ class AnalyticsViewController: UIViewController, UITableViewDelegate, UITableVie
             motivationCard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
             motivationCard.heightAnchor.constraint(equalToConstant: 54)
         ])
-        view.addSubview(calendarCard)
+
+        // --- Sticky/Transforming Calendar Implementation ---
+        view.addSubview(calendarHeaderContainer)
+        calendarHeaderContainer.translatesAutoresizingMaskIntoConstraints = false
+        calendarHeaderContainer.addSubview(calendarCard)
+        calendarCard.translatesAutoresizingMaskIntoConstraints = false
+
+        calendarHeaderTop = calendarHeaderContainer.topAnchor.constraint(equalTo: motivationCard.bottomAnchor, constant: 16)
+        calendarHeaderHeight = calendarHeaderContainer.heightAnchor.constraint(equalToConstant: expandedCalendarHeight)
         NSLayoutConstraint.activate([
-            calendarCard.topAnchor.constraint(equalTo: motivationCard.bottomAnchor, constant: 16),
-            calendarCard.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            calendarCard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            calendarCard.heightAnchor.constraint(equalToConstant: 312)
+            calendarHeaderTop,
+            calendarHeaderContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            calendarHeaderContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            calendarHeaderHeight,
+
+            calendarCard.leadingAnchor.constraint(equalTo: calendarHeaderContainer.leadingAnchor),
+            calendarCard.trailingAnchor.constraint(equalTo: calendarHeaderContainer.trailingAnchor),
+            calendarCard.topAnchor.constraint(equalTo: calendarHeaderContainer.topAnchor),
+            calendarCard.bottomAnchor.constraint(equalTo: calendarHeaderContainer.bottomAnchor),
         ])
-        // Table for cards, with no separators, transparent, like your welcome/home
+
         analyticsTable.backgroundColor = .clear
         analyticsTable.separatorStyle = .none
         analyticsTable.delegate = self
@@ -93,27 +111,48 @@ class AnalyticsViewController: UIViewController, UITableViewDelegate, UITableVie
         analyticsTable.register(AnalyticsHabitCardView.self, forCellReuseIdentifier: "HabitCard")
         analyticsTable.translatesAutoresizingMaskIntoConstraints = false
         analyticsTable.showsVerticalScrollIndicator = false
-        analyticsTable.rowHeight = UITableView.automaticDimension
         analyticsTable.rowHeight = 100
         analyticsTable.estimatedRowHeight = 80
         view.addSubview(analyticsTable)
         NSLayoutConstraint.activate([
-            analyticsTable.topAnchor.constraint(equalTo: calendarCard.bottomAnchor, constant: 16),
+            analyticsTable.topAnchor.constraint(equalTo: calendarHeaderContainer.bottomAnchor, constant: 16),
             analyticsTable.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 0),
             analyticsTable.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: 0),
             analyticsTable.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
         view.bringSubviewToFront(analyticsTable)
+
+        // -- Calendar row mode tap handler --
+        calendarCard.rowCalendarView.onDateSelected = { [weak self] date, habits in
+            self?.showHabitsForDate(date, habits: habits)
+        }
+    }
+
+    // MARK: - Sticky/Collapsing Calendar Animation
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        let offsetY = max(0, scrollView.contentOffset.y)
+        // If scrolled past a threshold, show row mode, else show full calendar
+        if offsetY > 80 {
+            calendarCard.showRowMode()
+            calendarHeaderHeight.constant = collapsedCalendarHeight
+        } else {
+            calendarCard.showFullMonthMode()
+            calendarHeaderHeight.constant = expandedCalendarHeight
+        }
+        let minHeight = collapsedCalendarHeight
+        let maxHeight = expandedCalendarHeight
+        let newHeight = calendarHeaderHeight.constant
+        let progress = min(1, max(0, (maxHeight - newHeight) / (maxHeight - minHeight)))
+        calendarCard.layer.shadowOpacity = Float(0.13 + 0.10 * progress)
+        calendarCard.alpha = 1 - 0.10 * progress
     }
 
     // MARK: - TableView DataSource
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        print("TableView numberOfRowsInSection called. habits.count = \(habits.count)")
         return habits.count
     }
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        print("Configuring cell for row \(indexPath.row): \(habits[indexPath.row].title)")
         let habit = habits[indexPath.row]
         let cell = tableView.dequeueReusableCell(withIdentifier: "HabitCard", for: indexPath) as! AnalyticsHabitCardView
         cell.configure(with: habit)
@@ -122,36 +161,16 @@ class AnalyticsViewController: UIViewController, UITableViewDelegate, UITableVie
 
     // MARK: - Data
 
-
     private func fetchAndDisplayAnalytics() {
-        print("fetchAndDisplayAnalytics called")
-        guard let uid = Auth.auth().currentUser?.uid else {
-            print("No current user UID")
-            return
-        }
-        print("Fetching habits for user: \(uid)")
+        guard let uid = Auth.auth().currentUser?.uid else { return }
         Firestore.firestore().collection("users").document(uid).collection("habits")
             .getDocuments { [weak self] (snapshot, error) in
-                if let error = error {
-                    print("Firestore error: \(error)")
-                }
-                guard let self = self, let docs = snapshot?.documents else {
-                    print("No snapshot?.documents")
-                    return
-                }
-                print("Fetched \(docs.count) docs from Firestore")
+                if let error = error { print("Firestore error: \(error)") }
+                guard let self = self, let docs = snapshot?.documents else { return }
                 self.habits = docs.compactMap { doc in
                     let data = doc.data()
-                    print("Habit doc data: \(data)")
-                    guard let title = data["title"] as? String else {
-                        print("Skipping doc, missing title: \(data)")
-                        return nil
-                    }
-                    // DoneDates parsing
-                    guard let doneDatesRaw = data["doneDates"] as? [String: Any] else {
-                        print("Skipping doc, missing doneDates: \(data)")
-                        return nil
-                    }
+                    guard let title = data["title"] as? String else { return nil }
+                    guard let doneDatesRaw = data["doneDates"] as? [String: Any] else { return nil }
                     var doneDates: [String: Bool] = [:]
                     for (key, value) in doneDatesRaw {
                         if let b = value as? Bool { doneDates[key] = b }
@@ -165,8 +184,6 @@ class AnalyticsViewController: UIViewController, UITableViewDelegate, UITableVie
                         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
                         return df.date(from: $0.key)
                     }
-                    
-                    // --- NEW: fetch days array from Firestore ---
                     var daysArray: [Int] = []
                     if let daysRaw = data["days"] as? [Any] {
                         daysArray = daysRaw.compactMap { n in
@@ -175,21 +192,16 @@ class AnalyticsViewController: UIViewController, UITableViewDelegate, UITableVie
                             return nil
                         }
                     }
-                    
-                    // --- NEW: fetch time from Firestore as a string or timestamp ---
                     var timeString: String? = nil
                     if let t = data["timeString"] as? String {
                         timeString = t
                     } else if let ts = data["schedule"] as? Timestamp {
-                        // Firestore Timestamp case
                         let date = ts.dateValue()
                         let formatter = DateFormatter()
                         formatter.timeStyle = .short
                         formatter.dateStyle = .none
                         timeString = formatter.string(from: date)
                     }
-                    
-                    print("Parsed habit: title=\(title), colorHex=\(colorHex), icon=\(icon), daysArray=\(daysArray), timeString=\(String(describing: timeString)), completedDates.count=\(completedDates.count)")
                     return AnalyticsHabit(
                         title: title,
                         colorHex: colorHex,
@@ -199,18 +211,13 @@ class AnalyticsViewController: UIViewController, UITableViewDelegate, UITableVie
                         timeString: timeString
                     )
                 }
-                print("Parsed \(self.habits.count) habits")
-
                 let allDates = Set(self.habits.flatMap { $0.completedDates.map { $0.stripTime() } })
-                print("All highlighted dates: \(allDates)")
                 self.calendarCard.setHighlightedDates(Array(allDates))
+                self.calendarCard.rowCalendarView.habits = self.habits // <-- set habits for row coloring
                 DispatchQueue.main.async {
-                    print("Reloading analyticsTable")
                     self.analyticsTable.reloadData()
                 }
-                // Motivation
                 let totalCheckins = self.habits.flatMap { $0.completedDates }
-                print("Total checkins: \(totalCheckins.count)")
                 if totalCheckins.isEmpty {
                     self.motivationCard.setText("Start your journey. Every check-in builds a better you!")
                 } else if let best = self.habits.max(by: { $0.currentStreak < $1.currentStreak }), best.currentStreak > 5 {
@@ -219,6 +226,27 @@ class AnalyticsViewController: UIViewController, UITableViewDelegate, UITableVie
                     self.motivationCard.setText("Keep going, consistency leads to results!")
                 }
             }
+    }
+
+    // --- Elegant Habit List for Date ---
+    func showHabitsForDate(_ date: Date, habits: [AnalyticsHabit]) {
+        let df = DateFormatter()
+        df.dateStyle = .full
+        let dateStr = df.string(from: date)
+
+        let alert = UIAlertController(title: dateStr, message: nil, preferredStyle: .actionSheet)
+        if habits.isEmpty {
+            alert.message = "No habits scheduled for this day."
+        } else {
+            for habit in habits {
+                let isDone = habit.completedDates.contains(where: { Calendar.current.isDate($0, inSameDayAs: date) })
+                let color = UIColor(hex: habit.colorHex) ?? .label
+                let title = "\(isDone ? "✅" : "⭕️") \(habit.title)"
+                alert.addAction(UIAlertAction(title: title, style: .default, handler: nil))
+            }
+        }
+        alert.addAction(UIAlertAction(title: "Close", style: .cancel))
+        present(alert, animated: true)
     }
 }
 
@@ -281,12 +309,15 @@ class MotivationCard: UIView {
     required init?(coder: NSCoder) { super.init(coder: coder) }
 }
 
+// --- MODIFIED CALENDAR CARD VIEW ---
 class CalendarCardView: UIView {
-    private let calendarView = ElegantMonthCalendarView()
+    let fullCalendarView = ElegantMonthCalendarView()
+    let rowCalendarView = CalendarRowView()
     private let bg = UIView()
+    private var isRowMode = false
 
-    init() {
-        super.init(frame: .zero)
+    override init(frame: CGRect) {
+        super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = .clear
         bg.translatesAutoresizingMaskIntoConstraints = false
@@ -298,9 +329,11 @@ class CalendarCardView: UIView {
         bg.layer.shadowOffset = CGSize(width: 0, height: 2)
         addSubview(bg)
 
-        calendarView.translatesAutoresizingMaskIntoConstraints = false
-        calendarView.backgroundColor = .clear
-        bg.addSubview(calendarView)
+        fullCalendarView.translatesAutoresizingMaskIntoConstraints = false
+        rowCalendarView.translatesAutoresizingMaskIntoConstraints = false
+        bg.addSubview(fullCalendarView)
+        bg.addSubview(rowCalendarView)
+        rowCalendarView.alpha = 0
 
         NSLayoutConstraint.activate([
             bg.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -308,20 +341,151 @@ class CalendarCardView: UIView {
             bg.topAnchor.constraint(equalTo: topAnchor),
             bg.bottomAnchor.constraint(equalTo: bottomAnchor),
 
-            calendarView.leadingAnchor.constraint(equalTo: bg.leadingAnchor, constant: 8),
-            calendarView.trailingAnchor.constraint(equalTo: bg.trailingAnchor, constant: -8),
-            calendarView.topAnchor.constraint(equalTo: bg.topAnchor, constant: 7),
-            calendarView.bottomAnchor.constraint(equalTo: bg.bottomAnchor, constant: -7),
+            fullCalendarView.leadingAnchor.constraint(equalTo: bg.leadingAnchor, constant: 8),
+            fullCalendarView.trailingAnchor.constraint(equalTo: bg.trailingAnchor, constant: -8),
+            fullCalendarView.topAnchor.constraint(equalTo: bg.topAnchor, constant: 7),
+            fullCalendarView.bottomAnchor.constraint(equalTo: bg.bottomAnchor, constant: -7),
+
+            rowCalendarView.leadingAnchor.constraint(equalTo: bg.leadingAnchor, constant: 8),
+            rowCalendarView.trailingAnchor.constraint(equalTo: bg.trailingAnchor, constant: -8),
+            rowCalendarView.topAnchor.constraint(equalTo: bg.topAnchor, constant: 7),
+            rowCalendarView.bottomAnchor.constraint(equalTo: bg.bottomAnchor, constant: -7),
         ])
     }
     func setHighlightedDates(_ dates: [Date]) {
-        print("Setting highlighted dates: \(dates)")
-        calendarView.highlightedDates = dates
+        fullCalendarView.highlightedDates = dates
+        rowCalendarView.highlightedDates = dates
+    }
+    func showRowMode(animated: Bool = true) {
+        guard !isRowMode else { return }
+        isRowMode = true
+        if animated {
+            UIView.animate(withDuration: 0.28) {
+                self.fullCalendarView.alpha = 0
+                self.rowCalendarView.alpha = 1
+            }
+        } else {
+            self.fullCalendarView.alpha = 0
+            self.rowCalendarView.alpha = 1
+        }
+    }
+    func showFullMonthMode(animated: Bool = true) {
+        guard isRowMode else { return }
+        isRowMode = false
+        if animated {
+            UIView.animate(withDuration: 0.28) {
+                self.fullCalendarView.alpha = 1
+                self.rowCalendarView.alpha = 0
+            }
+        } else {
+            self.fullCalendarView.alpha = 1
+            self.rowCalendarView.alpha = 0
+        }
     }
     required init?(coder: NSCoder) { super.init(coder: coder) }
 }
 
+// --- NEW: Row mode calendar, 5 day bubbles centered on today ---
+class CalendarRowView: UIView {
+    var highlightedDates: [Date] = [] {
+        didSet { setNeedsLayout() }
+    }
+    var habits: [AnalyticsHabit] = [] {
+        didSet { setNeedsLayout() }
+    }
+    var onDateSelected: ((Date, [AnalyticsHabit]) -> Void)?
 
+    private var dayLabels: [UILabel] = []
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        for v in dayLabels { v.removeFromSuperview() }
+        dayLabels.removeAll()
+
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        var days: [Date] = []
+        for i in -2...2 {
+            if let date = calendar.date(byAdding: .day, value: i, to: today) {
+                days.append(date)
+            }
+        }
+
+        let bubbleSize: CGFloat = 36
+        let spacing: CGFloat = 16
+        let totalWidth = bubbleSize * 5 + spacing * 4
+        let startX = (bounds.size.width - totalWidth) / 2
+
+        for (i, date) in days.enumerated() {
+            let x = startX + CGFloat(i) * (bubbleSize + spacing)
+            let label = UILabel(frame: CGRect(x: x, y: bounds.midY - bubbleSize/2, width: bubbleSize, height: bubbleSize))
+            let dayNum = Calendar.current.component(.day, from: date)
+            label.text = "\(dayNum)"
+            label.textAlignment = .center
+            label.font = UIFont.systemFont(ofSize: 19, weight: .bold)
+            label.layer.cornerRadius = bubbleSize / 2
+            label.clipsToBounds = true
+
+            // Find all habits scheduled for this date's weekday
+            let weekday = ((calendar.component(.weekday, from: date) + 6) % 7) // Sunday=0
+            let habitsForDay = habits.filter { $0.scheduledDays?.contains(weekday) == true }
+            let colors = habitsForDay.compactMap { UIColor(hex: $0.colorHex) }
+
+            if calendar.isDate(date, inSameDayAs: today) {
+                label.backgroundColor = UIColor.systemRed
+                label.textColor = .white
+            } else if !colors.isEmpty {
+                label.backgroundColor = UIColor.blend(colors: colors)
+                label.textColor = label.backgroundColor?.isDarkColor == true ? .white : .black
+            } else {
+                label.backgroundColor = UIColor.systemGray5
+                label.textColor = UIColor(white: 0.55, alpha: 1)
+            }
+
+            label.isUserInteractionEnabled = true
+            label.tag = i // 0...4
+            let tap = UITapGestureRecognizer(target: self, action: #selector(handleDateTap(_:)))
+            label.addGestureRecognizer(tap)
+
+            addSubview(label)
+            dayLabels.append(label)
+        }
+    }
+
+    @objc private func handleDateTap(_ sender: UITapGestureRecognizer) {
+        guard let label = sender.view as? UILabel, label.tag >= 0, label.tag < 5 else { return }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        guard let selectedDate = calendar.date(byAdding: .day, value: label.tag - 2, to: today) else { return }
+        let weekday = ((calendar.component(.weekday, from: selectedDate) + 6) % 7)
+        let filteredHabits = habits.filter { $0.scheduledDays?.contains(weekday) == true }
+        onDateSelected?(selectedDate, filteredHabits)
+    }
+}
+
+// Color blending and helpers
+extension UIColor {
+    static func blend(colors: [UIColor]) -> UIColor {
+        guard !colors.isEmpty else { return .lightGray }
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        for color in colors {
+            var rr: CGFloat = 0, gg: CGFloat = 0, bb: CGFloat = 0, aa: CGFloat = 0
+            color.getRed(&rr, green: &gg, blue: &bb, alpha: &aa)
+            r += rr
+            g += gg
+            b += bb
+            a += aa
+        }
+        let count = CGFloat(colors.count)
+        return UIColor(red: r/count, green: g/count, blue: b/count, alpha: 1)
+    }
+    var isDarkColor: Bool {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 1
+        getRed(&r, green: &g, blue: &b, alpha: &a)
+        // Perceived brightness
+        return ((r * 299) + (g * 587) + (b * 114)) / 1000 < 0.5
+    }
+}
 
 class ElegantMonthCalendarView: UIView {
     var highlightedDates: [Date] = [] {
@@ -330,8 +494,8 @@ class ElegantMonthCalendarView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .black
-        isOpaque = true
+        backgroundColor = .clear
+        isOpaque = false
     }
     required init?(coder: NSCoder) { fatalError() }
 
@@ -346,7 +510,6 @@ class ElegantMonthCalendarView: UIView {
         // Colors
         let mainRed = UIColor.systemRed
         let fadedRed = UIColor.systemRed.withAlphaComponent(0.72)
-        let bgBlack = UIColor.black
 
         // Month Title
         let monthFormatter = DateFormatter()
@@ -417,9 +580,7 @@ class ElegantMonthCalendarView: UIView {
     }
 }
 
-
 // MARK: - Habit Card View (Matches Welcome/Home Style)
-
 
 class AnalyticsHabitCardView: UITableViewCell {
     private let card = UIView()
@@ -437,7 +598,7 @@ class AnalyticsHabitCardView: UITableViewCell {
 
     func configure(with habit: AnalyticsHabit) {
         let color = UIColor(hex: habit.colorHex) ?? .systemBlue
-        card.backgroundColor = color.withAlphaComponent(0.07)
+        card.backgroundColor = color.withAlphaComponent(0.15)
         iconView.image = UIImage(systemName: habit.icon)?.withRenderingMode(.alwaysTemplate)
         iconView.tintColor = color
         titleLabel.text = habit.title
@@ -523,7 +684,6 @@ class AnalyticsHabitCardView: UITableViewCell {
         ])
     }
 }
-
 
 struct AnalyticsHabit {
     let title: String
