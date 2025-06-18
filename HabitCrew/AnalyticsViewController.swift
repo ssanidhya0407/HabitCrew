@@ -124,7 +124,11 @@ class AnalyticsViewController: UIViewController, UITableViewDelegate, UITableVie
 
         // -- Calendar row mode tap handler --
         calendarCard.rowCalendarView.onDateSelected = { [weak self] date, habits in
-            self?.showHabitsForDate(date, habits: habits)
+            self?.showHabitSheet(for: date, habits: habits)
+        }
+        // -- ElegantMonthCalendarView tap handler --
+        calendarCard.fullCalendarView.onDateTapped = { [weak self] date, habits in
+            self?.showHabitSheet(for: date, habits: habits)
         }
     }
 
@@ -213,7 +217,8 @@ class AnalyticsViewController: UIViewController, UITableViewDelegate, UITableVie
                 }
                 let allDates = Set(self.habits.flatMap { $0.completedDates.map { $0.stripTime() } })
                 self.calendarCard.setHighlightedDates(Array(allDates))
-                self.calendarCard.rowCalendarView.habits = self.habits // <-- set habits for row coloring
+                self.calendarCard.rowCalendarView.habits = self.habits
+                self.calendarCard.fullCalendarView.habits = self.habits
                 DispatchQueue.main.async {
                     self.analyticsTable.reloadData()
                 }
@@ -228,25 +233,10 @@ class AnalyticsViewController: UIViewController, UITableViewDelegate, UITableVie
             }
     }
 
-    // --- Elegant Habit List for Date ---
-    func showHabitsForDate(_ date: Date, habits: [AnalyticsHabit]) {
-        let df = DateFormatter()
-        df.dateStyle = .full
-        let dateStr = df.string(from: date)
-
-        let alert = UIAlertController(title: dateStr, message: nil, preferredStyle: .actionSheet)
-        if habits.isEmpty {
-            alert.message = "No habits scheduled for this day."
-        } else {
-            for habit in habits {
-                let isDone = habit.completedDates.contains(where: { Calendar.current.isDate($0, inSameDayAs: date) })
-                let color = UIColor(hex: habit.colorHex) ?? .label
-                let title = "\(isDone ? "✅" : "⭕️") \(habit.title)"
-                alert.addAction(UIAlertAction(title: title, style: .default, handler: nil))
-            }
-        }
-        alert.addAction(UIAlertAction(title: "Close", style: .cancel))
-        present(alert, animated: true)
+    // --- Elegant Habit Sheet for Date ---
+    func showHabitSheet(for date: Date, habits: [AnalyticsHabit]) {
+        let sheet = HabitSheetViewController(date: date, habits: habits)
+        present(sheet, animated: true)
     }
 }
 
@@ -308,6 +298,7 @@ class MotivationCard: UIView {
     func setText(_ text: String) { label.text = text }
     required init?(coder: NSCoder) { super.init(coder: coder) }
 }
+
 
 // --- MODIFIED CALENDAR CARD VIEW ---
 class CalendarCardView: UIView {
@@ -463,6 +454,121 @@ class CalendarRowView: UIView {
     }
 }
 
+
+// --- ElegantMonthCalendarView with only today bubble and tap sheet support ---
+class ElegantMonthCalendarView: UIView {
+    var highlightedDates: [Date] = [] { didSet { setNeedsDisplay() } }
+    var habits: [AnalyticsHabit] = []
+    var onDateTapped: ((Date, [AnalyticsHabit]) -> Void)?
+
+    private var dayRects: [Date: CGRect] = [:]
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isOpaque = false
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        addGestureRecognizer(tap)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ rect: CGRect) {
+        dayRects.removeAll()
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let comp = calendar.dateComponents([.year, .month], from: today)
+        guard let firstOfMonth = calendar.date(from: comp) else { return }
+        let range = calendar.range(of: .day, in: .month, for: today)!
+        let days = range.count
+
+        let mainRed = UIColor.systemRed
+        let fadedRed = UIColor.systemRed.withAlphaComponent(0.72)
+
+        let monthFormatter = DateFormatter()
+        monthFormatter.dateFormat = "LLLL"
+        let titleStr = monthFormatter.string(from: today).capitalized
+        let titleAttrs: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 32, weight: .bold),
+            .foregroundColor: mainRed
+        ]
+        let titleSize = titleStr.size(withAttributes: titleAttrs)
+        titleStr.draw(at: CGPoint(x: 28, y: 25), withAttributes: titleAttrs)
+
+        let cellW = (rect.width - 36) / 7
+        let weekdaySymbols = calendar.veryShortStandaloneWeekdaySymbols
+        for i in 0..<7 {
+            let attr: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 22, weight: .semibold),
+                .foregroundColor: fadedRed
+            ]
+            let name = weekdaySymbols[i]
+            let size = name.size(withAttributes: attr)
+            let x = CGFloat(i) * cellW + (cellW - size.width)/2 + 18
+            name.draw(at: CGPoint(x: x, y: titleSize.height + 37), withAttributes: attr)
+        }
+
+        let numRows = Int(ceil(Double(days + calendar.component(.weekday, from: firstOfMonth) - 1) / 7.0))
+        let cellH = (rect.height - titleSize.height - 70) / CGFloat(numRows)
+        var dayNum = 1
+        var y: CGFloat = titleSize.height + 62
+        let firstWeekday = calendar.component(.weekday, from: firstOfMonth) - 1
+        for row in 0..<numRows {
+            for col in 0..<7 {
+                if row == 0 && col < firstWeekday { continue }
+                if dayNum > days { break }
+                let x = CGFloat(col) * cellW + 18
+                let rectDay = CGRect(x: x, y: y, width: cellW, height: cellH)
+                let date = calendar.date(byAdding: .day, value: dayNum-1, to: firstOfMonth)!
+                let isToday = calendar.isDateInToday(date)
+
+                if isToday {
+                    let diameter = min(cellW, cellH) * 0.92
+                    let circleRect = CGRect(
+                        x: rectDay.midX - diameter/2,
+                        y: rectDay.midY - diameter/2,
+                        width: diameter, height: diameter)
+                    let path = UIBezierPath(ovalIn: circleRect)
+                    mainRed.setFill()
+                    path.fill()
+                    let border = UIBezierPath(ovalIn: circleRect.insetBy(dx: -2.5, dy: -2.5))
+                    UIColor.white.setStroke()
+                    border.lineWidth = 4
+                    border.stroke()
+                    dayRects[date.stripTime()] = circleRect
+                } else {
+                    dayRects[date.stripTime()] = rectDay
+                }
+
+                let attr: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 22, weight: .semibold),
+                    .foregroundColor: isToday ? UIColor.white : mainRed
+                ]
+                let dayStr = "\(dayNum)"
+                let size = dayStr.size(withAttributes: attr)
+                let textX = rectDay.midX - size.width/2
+                let textY = rectDay.midY - size.height/2
+                dayStr.draw(at: CGPoint(x: textX, y: textY), withAttributes: attr)
+                dayNum += 1
+            }
+            y += cellH
+        }
+    }
+
+    @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
+        let point = recognizer.location(in: self)
+        for (date, rect) in dayRects {
+            if rect.contains(point) {
+                let calendar = Calendar.current
+                let weekday = ((calendar.component(.weekday, from: date) + 6) % 7)
+                let habitsForDay = habits.filter { $0.scheduledDays?.contains(weekday) == true }
+                onDateTapped?(date, habitsForDay)
+                break
+            }
+        }
+    }
+}
+
+
 // Color blending and helpers
 extension UIColor {
     static func blend(colors: [UIColor]) -> UIColor {
@@ -482,103 +588,136 @@ extension UIColor {
     var isDarkColor: Bool {
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 1
         getRed(&r, green: &g, blue: &b, alpha: &a)
-        // Perceived brightness
         return ((r * 299) + (g * 587) + (b * 114)) / 1000 < 0.5
     }
 }
 
-class ElegantMonthCalendarView: UIView {
-    var highlightedDates: [Date] = [] {
-        didSet { setNeedsDisplay() }
-    }
+// MARK: - Elegant Habit Sheet
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .clear
-        isOpaque = false
+class HabitSheetViewController: UIViewController, UITableViewDataSource {
+    let date: Date
+    let habits: [AnalyticsHabit]
+    let completedHabits: [AnalyticsHabit]
+    let tableView = UITableView(frame: .zero, style: .plain)
+    let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+
+    init(date: Date, habits: [AnalyticsHabit]) {
+        self.date = date
+        self.habits = habits
+        let completed = habits.filter { $0.completedDates.contains(where: { Calendar.current.isDate($0, inSameDayAs: date) }) }
+        self.completedHabits = completed
+        super.init(nibName: nil, bundle: nil)
+        modalPresentationStyle = .pageSheet
+        if let sheet = sheetPresentationController {
+            sheet.detents = [.custom { _ in CGFloat(80 + habits.count * 62) }]
+            sheet.prefersGrabberVisible = true
+            sheet.preferredCornerRadius = 22
+        }
     }
     required init?(coder: NSCoder) { fatalError() }
-
-    override func draw(_ rect: CGRect) {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        let comp = calendar.dateComponents([.year, .month], from: today)
-        guard let firstOfMonth = calendar.date(from: comp) else { return }
-        let range = calendar.range(of: .day, in: .month, for: today)!
-        let days = range.count
-
-        // Colors
-        let mainRed = UIColor.systemRed
-        let fadedRed = UIColor.systemRed.withAlphaComponent(0.72)
-
-        // Month Title
-        let monthFormatter = DateFormatter()
-        monthFormatter.dateFormat = "LLLL"
-        let titleStr = monthFormatter.string(from: today).capitalized
-        let titleAttrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 32, weight: .bold),
-            .foregroundColor: mainRed
-        ]
-        let titleSize = titleStr.size(withAttributes: titleAttrs)
-        titleStr.draw(at: CGPoint(x: 28, y: 25), withAttributes: titleAttrs)
-
-        // Weekdays row
-        let cellW = (rect.width - 36) / 7
-        let weekdaySymbols = calendar.veryShortStandaloneWeekdaySymbols
-        for i in 0..<7 {
-            let attr: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 22, weight: .semibold),
-                .foregroundColor: fadedRed
-            ]
-            let name = weekdaySymbols[i]
-            let size = name.size(withAttributes: attr)
-            let x = CGFloat(i) * cellW + (cellW - size.width)/2 + 18
-            name.draw(at: CGPoint(x: x, y: titleSize.height + 37), withAttributes: attr)
-        }
-
-        // Days grid
-        let numRows = Int(ceil(Double(days + calendar.component(.weekday, from: firstOfMonth) - 1) / 7.0))
-        let cellH = (rect.height - titleSize.height - 70) / CGFloat(numRows)
-        var dayNum = 1
-        var y: CGFloat = titleSize.height + 62
-        let firstWeekday = calendar.component(.weekday, from: firstOfMonth) - 1
-        for row in 0..<numRows {
-            for col in 0..<7 {
-                if row == 0 && col < firstWeekday { continue }
-                if dayNum > days { break }
-                let x = CGFloat(col) * cellW + 18
-                let rectDay = CGRect(x: x, y: y, width: cellW, height: cellH)
-                let date = calendar.date(byAdding: .day, value: dayNum-1, to: firstOfMonth)!
-                let isToday = calendar.isDateInToday(date)
-
-                if isToday {
-                    // Draw big red filled circle for today
-                    let diameter = min(cellW, cellH) * 0.92
-                    let circleRect = CGRect(
-                        x: rectDay.midX - diameter/2,
-                        y: rectDay.midY - diameter/2,
-                        width: diameter, height: diameter)
-                    let path = UIBezierPath(ovalIn: circleRect)
-                    mainRed.setFill()
-                    path.fill()
-                }
-
-                // Day number
-                let attr: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: 22, weight: .semibold),
-                    .foregroundColor: isToday ? UIColor.white : mainRed
-                ]
-                let dayStr = "\(dayNum)"
-                let size = dayStr.size(withAttributes: attr)
-                let textX = rectDay.midX - size.width/2
-                let textY = rectDay.midY - size.height/2
-                dayStr.draw(at: CGPoint(x: textX, y: textY), withAttributes: attr)
-                dayNum += 1
-            }
-            y += cellH
-        }
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+        blurView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(blurView)
+        NSLayoutConstraint.activate([
+            blurView.topAnchor.constraint(equalTo: view.topAnchor),
+            blurView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            blurView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            blurView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        let df = DateFormatter()
+        df.dateStyle = .full
+        let label = UILabel()
+        label.text = df.string(from: date)
+        label.font = .systemFont(ofSize: 18, weight: .semibold)
+        label.textAlignment = .center
+        label.textColor = .label
+        label.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: view.topAnchor, constant: 18),
+            label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+            label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+        ])
+        tableView.dataSource = self
+        tableView.separatorStyle = .none
+        tableView.backgroundColor = .clear
+        tableView.register(HabitSheetCell.self, forCellReuseIdentifier: "cell")
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.isScrollEnabled = false
+        view.addSubview(tableView)
+        NSLayoutConstraint.activate([
+            tableView.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 8),
+            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 0),
+            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: 0),
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -18)
+        ])
+    }
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { habits.count }
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let habit = habits[indexPath.row]
+        let isDone = completedHabits.contains(where: { $0.title == habit.title })
+        let cell = tableView.dequeueReusableCell(withIdentifier: "cell", for: indexPath) as! HabitSheetCell
+        cell.configure(with: habit, isDone: isDone)
+        return cell
     }
 }
+class HabitSheetCell: UITableViewCell {
+    let iconView = UIImageView()
+    let titleLabel = UILabel()
+    let checkView = UIView()
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        backgroundColor = .clear
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        checkView.translatesAutoresizingMaskIntoConstraints = false
+        checkView.layer.cornerRadius = 14
+        checkView.layer.masksToBounds = true
+        checkView.layer.shadowColor = UIColor.black.withAlphaComponent(0.18).cgColor
+        checkView.layer.shadowRadius = 4
+        checkView.layer.shadowOffset = CGSize(width: 0, height: 2)
+        contentView.addSubview(iconView)
+        contentView.addSubview(titleLabel)
+        contentView.addSubview(checkView)
+        NSLayoutConstraint.activate([
+            iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
+            iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 28),
+            iconView.heightAnchor.constraint(equalToConstant: 28),
+            checkView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
+            checkView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            checkView.widthAnchor.constraint(equalToConstant: 28),
+            checkView.heightAnchor.constraint(equalToConstant: 28),
+            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 16),
+            titleLabel.trailingAnchor.constraint(equalTo: checkView.leadingAnchor, constant: -8),
+            titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor)
+        ])
+        titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    func configure(with habit: AnalyticsHabit, isDone: Bool) {
+        let color = UIColor(hex: habit.colorHex) ?? .systemBlue
+        iconView.image = UIImage(systemName: habit.icon)?.withRenderingMode(.alwaysTemplate)
+        iconView.tintColor = color
+        titleLabel.text = habit.title
+        checkView.backgroundColor = isDone ? color : UIColor.systemGray4
+        let checkSymbol = isDone ? "checkmark" : "xmark"
+        let checkIcon = UIImage(systemName: checkSymbol)?.withTintColor(.white, renderingMode: .alwaysOriginal)
+        checkView.subviews.forEach { $0.removeFromSuperview() }
+        let imgView = UIImageView(image: checkIcon)
+        imgView.translatesAutoresizingMaskIntoConstraints = false
+        checkView.addSubview(imgView)
+        NSLayoutConstraint.activate([
+            imgView.centerXAnchor.constraint(equalTo: checkView.centerXAnchor),
+            imgView.centerYAnchor.constraint(equalTo: checkView.centerYAnchor),
+            imgView.widthAnchor.constraint(equalToConstant: 16),
+            imgView.heightAnchor.constraint(equalToConstant: 16)
+        ])
+    }
+}
+
 
 // MARK: - Habit Card View (Matches Welcome/Home Style)
 
