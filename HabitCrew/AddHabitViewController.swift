@@ -6,12 +6,14 @@ protocol AddHabitViewControllerDelegate: AnyObject {
     func didAddHabit(_ habit: Habit)
 }
 
+
 class AddHabitViewController: UIViewController {
 
     // MARK: - Properties
     weak var delegate: AddHabitViewControllerDelegate?
     private let db = Firestore.firestore()
-    private var selectedFriend: String?
+    private var selectedFriendOrGroup: String?  // The display name (for picker UI)
+    private var selectedFriendOrGroupId: String? // The friend uid or group id (for saving to Firebase)
     private var selectedDate: Date?
     private var selectedTime: Date = Date()
     private var selectedIcon: String = "star.fill"
@@ -22,6 +24,22 @@ class AddHabitViewController: UIViewController {
     private let gradientLayer = CAGradientLayer()
     private let decorativeBlob1 = UIView()
     private let decorativeBlob2 = UIView()
+
+    // Friend and group lists (with mapping to uids)
+    private var friendsSource: [(id: String, display: String)] = []
+    private var groupsSource: [(id: String, display: String)] = []
+    private var combinedSource: [(id: String?, display: String)] {
+        var arr: [(String?, String)] = []
+        if !friendsSource.isEmpty {
+            arr.append((nil, "— Friends —"))
+            arr += friendsSource.map { ($0.id, $0.display) }
+        }
+        if !groupsSource.isEmpty {
+            arr.append((nil, "— Groups —"))
+            arr += groupsSource.map { ($0.id, $0.display) }
+        }
+        return arr
+    }
 
     // MARK: - UI Elements
     private let topTitleLabel: UILabel = {
@@ -94,12 +112,11 @@ class AddHabitViewController: UIViewController {
     private lazy var nameField = themedTextField("Habit name", font: .systemFont(ofSize: 18, weight: .semibold))
     private lazy var motivationField = themedTextField("Motivation (optional)")
     private lazy var friendField: UITextField = {
-        let field = themedTextField("Accountability partner (optional)")
+        let field = themedTextField("Accountability partner or group (optional)")
         field.tintColor = .systemPurple
         return field
     }()
     private let friendPicker = UIPickerView()
-    private let friendsSource = ["Alex", "Jamie", "Rhea", "Sam", "Taylor", "Jordan", "Morgan"]
 
     // Customization Row
     private let iconColorRow = UIStackView()
@@ -150,7 +167,6 @@ class AddHabitViewController: UIViewController {
         setupGradientBackground()
         setupDecorativeBlobs()
         setupTopHeader()
-        // Add cardView, saveButton, and cancelButton first!
         view.addSubview(cardView)
         view.addSubview(saveButton)
         view.addSubview(cancelButton)
@@ -167,36 +183,67 @@ class AddHabitViewController: UIViewController {
         navigationController?.navigationBar.isHidden = true
         view.backgroundColor = .clear
 
-        // Now ALL of them are in the view hierarchy, set constraints:
         NSLayoutConstraint.activate([
-            // CardView
             cardView.topAnchor.constraint(equalTo: descLabel.bottomAnchor, constant: 25),
             cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
             cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
-
-            // Save/Cancel buttons
             saveButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
             saveButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
             saveButton.bottomAnchor.constraint(equalTo: cancelButton.topAnchor, constant: -16),
-
             cancelButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
             cancelButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
             cancelButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -22),
-
-            // Make sure cardView stays above the buttons
             cardView.bottomAnchor.constraint(lessThanOrEqualTo: saveButton.topAnchor, constant: -28),
-
-            // BlurView
             blurView.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
             blurView.trailingAnchor.constraint(equalTo: cardView.trailingAnchor),
             blurView.topAnchor.constraint(equalTo: cardView.topAnchor),
             blurView.bottomAnchor.constraint(equalTo: cardView.bottomAnchor)
         ])
+
+        fetchFriendsAndGroups()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         gradientLayer.frame = view.bounds
+    }
+
+    // MARK: - Firestore fetch for friends and groups (corrected for id mapping)
+    private func fetchFriendsAndGroups() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        // Friends: /users/{uid}/friends, documentID is the friend's UID
+        db.collection("users").document(uid).collection("friends").getDocuments { [weak self] (snapshot, error) in
+            guard let self = self else { return }
+            self.friendsSource = snapshot?.documents.compactMap { doc in
+                let data = doc.data()
+                let id = doc.documentID
+                if let displayName = data["displayName"] as? String, !displayName.isEmpty {
+                    return (id: id, display: displayName)
+                }
+                if let name = data["name"] as? String, !name.isEmpty {
+                    return (id: id, display: name)
+                }
+                if let email = data["email"] as? String, !email.isEmpty {
+                    return (id: id, display: email)
+                }
+                return nil
+            } ?? []
+            // Groups: /groups, id is the group doc id, name is display
+            self.db.collection("groups").whereField("memberUIDs", arrayContains: uid).getDocuments { [weak self] (groupSnap, error) in
+                guard let self = self else { return }
+                self.groupsSource = groupSnap?.documents.compactMap { doc in
+                    let data = doc.data()
+                    let id = doc.documentID
+                    if let name = data["name"] as? String {
+                        return (id: id, display: name)
+                    }
+                    return nil
+                } ?? []
+                DispatchQueue.main.async {
+                    self.friendPicker.reloadAllComponents()
+                }
+            }
+        }
     }
 
     // MARK: - Gradient & Blobs
@@ -244,22 +291,6 @@ class AddHabitViewController: UIViewController {
             descLabel.topAnchor.constraint(equalTo: topTitleLabel.bottomAnchor, constant: 7),
             descLabel.leadingAnchor.constraint(equalTo: topTitleLabel.leadingAnchor),
             descLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -35)
-        ])
-    }
-
-    private func setupCard() {
-        cardView.addSubview(blurView)
-        NSLayoutConstraint.activate([
-            cardView.topAnchor.constraint(equalTo: descLabel.bottomAnchor, constant: 25),
-            cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
-            cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
-            cardView.bottomAnchor.constraint(lessThanOrEqualTo: saveButton.topAnchor, constant: -28)
-        ])
-        NSLayoutConstraint.activate([
-            blurView.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
-            blurView.trailingAnchor.constraint(equalTo: cardView.trailingAnchor),
-            blurView.topAnchor.constraint(equalTo: cardView.topAnchor),
-            blurView.bottomAnchor.constraint(equalTo: cardView.bottomAnchor)
         ])
     }
 
@@ -406,8 +437,8 @@ class AddHabitViewController: UIViewController {
         formStack.addArrangedSubview(streakRow)
     }
 
-
     // MARK: - Actions
+
 
     @objc private func saveTapped() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -430,12 +461,12 @@ class AddHabitViewController: UIViewController {
             second: 0,
             of: selectedDate
         ) ?? Date()
-
+        
         let habit = Habit(
             title: title,
             note: note,
             createdAt: Date(),
-            friend: selectedFriend ?? "",
+            friend: selectedFriendOrGroupId ?? "",
             schedule: combinedDate,
             icon: selectedIcon,
             colorHex: selectedColor.hexString,
@@ -445,7 +476,7 @@ class AddHabitViewController: UIViewController {
         )
         let habitData = habit.dictionary
         let habitId = habit.id
-
+        
         saveButton.showLoading(true)
         db.collection("users").document(uid).collection("habits").document(habitId).setData(habitData) { [weak self] error in
             guard let self = self else { return }
@@ -464,6 +495,8 @@ class AddHabitViewController: UIViewController {
             }
         }
     }
+    
+
 
     @objc private func cancelTapped() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -593,34 +626,38 @@ class AddHabitViewController: UIViewController {
         }
         present(sheet, animated: true)
     }
-
-
 }
 
-// MARK: - UITextFieldDelegate for Friend Picker
+// MARK: - UITextFieldDelegate for Friend/Group Picker
+
 extension AddHabitViewController: UITextFieldDelegate, UIPickerViewDelegate, UIPickerViewDataSource {
     func numberOfComponents(in pickerView: UIPickerView) -> Int { 1 }
     func pickerView(_ pickerView: UIPickerView, numberOfRowsInComponent component: Int) -> Int {
-        return friendsSource.count
+        return combinedSource.count
     }
     func pickerView(_ pickerView: UIPickerView, titleForRow row: Int, forComponent component: Int) -> String? {
-        return friendsSource[row]
+        return combinedSource[row].display
     }
     func pickerView(_ pickerView: UIPickerView, didSelectRow row: Int, inComponent component: Int) {
-        selectedFriend = friendsSource[row]
-        friendField.text = selectedFriend
+        let val = combinedSource[row]
+        if val.id == nil {
+            // section header
+            return
+        }
+        selectedFriendOrGroup = val.display
+        selectedFriendOrGroupId = val.id
+        friendField.text = selectedFriendOrGroup
         friendField.layer.borderWidth = 0
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
     }
     func textFieldDidBeginEditing(_ textField: UITextField) {
         if textField == friendField {
-            if let sel = selectedFriend, let idx = friendsSource.firstIndex(of: sel) {
+            if let sel = selectedFriendOrGroup, let idx = combinedSource.firstIndex(where: { $0.display == sel }) {
                 friendPicker.selectRow(idx, inComponent: 0, animated: false)
             }
         }
     }
 }
-
 // MARK: - Loading Animation for Button
 private extension UIButton {
     func showLoading(_ show: Bool) {

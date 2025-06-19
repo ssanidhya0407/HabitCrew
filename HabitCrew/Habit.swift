@@ -1,22 +1,73 @@
 import Foundation
 import FirebaseFirestore
 
-struct Habit: Codable {
-    var id: String
-    var title: String
-    var note: String?
-    var createdAt: Date
-    var friend: String
-    var schedule: Date
-    var icon: String
-    var colorHex: String
-    var days: [Int]         // [0-6] for Sun-Sat
-    var motivation: String?
-    var remindIfMiss: Bool
-    var doneDates: [String: Bool] // e.g., ["2025-06-13": true]
+struct Habit {
+    let id: String
+    let title: String
+    let note: String?
+    let createdAt: Date
+    let friend: String
+    let schedule: Date
+    let icon: String
+    let colorHex: String
+    let days: [Int]
+    let motivation: String?
+    let remindIfMiss: Bool
+    var doneDates: [String: Bool]
+
+    init(
+        id: String = UUID().uuidString,
+        title: String,
+        note: String? = nil,
+        createdAt: Date = Date(),
+        friend: String = "",
+        schedule: Date,
+        icon: String = "star.fill",
+        colorHex: String = "#3B6DF6",
+        days: [Int] = [],
+        motivation: String? = nil,
+        remindIfMiss: Bool = true,
+        doneDates: [String: Bool] = [:]
+    ) {
+        self.id = id
+        self.title = title
+        self.note = note
+        self.createdAt = createdAt
+        self.friend = friend
+        self.schedule = schedule
+        self.icon = icon
+        self.colorHex = colorHex
+        self.days = days
+        self.motivation = motivation
+        self.remindIfMiss = remindIfMiss
+        self.doneDates = doneDates
+    }
+
+    init?(from dict: [String: Any]) {
+        self.id = dict["id"] as? String ?? UUID().uuidString
+        self.title = dict["title"] as? String ?? ""
+        self.note = dict["note"] as? String
+        if let ts = dict["createdAt"] as? Timestamp {
+            self.createdAt = ts.dateValue()
+        } else {
+            self.createdAt = Date()
+        }
+        self.friend = dict["friend"] as? String ?? ""
+        if let ts = dict["schedule"] as? Timestamp {
+            self.schedule = ts.dateValue()
+        } else {
+            self.schedule = Date()
+        }
+        self.icon = dict["icon"] as? String ?? "star.fill"
+        self.colorHex = dict["colorHex"] as? String ?? "#3B6DF6"
+        self.days = dict["days"] as? [Int] ?? []
+        self.motivation = dict["motivation"] as? String
+        self.remindIfMiss = dict["remindIfMiss"] as? Bool ?? true
+        self.doneDates = dict["doneDates"] as? [String: Bool] ?? [:]
+    }
 
     var dictionary: [String: Any] {
-        [
+        return [
             "id": id,
             "title": title,
             "note": note ?? "",
@@ -32,60 +83,14 @@ struct Habit: Codable {
         ]
     }
 
-    init(id: String = UUID().uuidString, title: String, note: String?, createdAt: Date = Date(), friend: String, schedule: Date, icon: String, colorHex: String, days: [Int], motivation: String?, remindIfMiss: Bool, doneDates: [String: Bool] = [:]) {
-        self.id = id
-        self.title = title
-        self.note = note
-        self.createdAt = createdAt
-        self.friend = friend
-        self.schedule = schedule
-        self.icon = icon
-        self.colorHex = colorHex
-        self.days = days
-        self.motivation = motivation
-        self.remindIfMiss = remindIfMiss
-        self.doneDates = doneDates
+    func isDoneToday() -> Bool {
+        let today = Habit.dateString()
+        return doneDates[today] == true
     }
 
-    init?(from document: [String: Any]) {
-        guard let id = document["id"] as? String,
-              let title = document["title"] as? String,
-              let friend = document["friend"] as? String,
-              let icon = document["icon"] as? String,
-              let colorHex = document["colorHex"] as? String,
-              let scheduleTS = document["schedule"] as? Timestamp,
-              let createdAtTS = document["createdAt"] as? Timestamp,
-              let daysRaw = document["days"] as? [Any],
-              let remindIfMiss = document["remindIfMiss"] as? Bool
-        else { return nil }
-        self.id = id
-        self.title = title
-        self.note = document["note"] as? String
-        self.createdAt = createdAtTS.dateValue()
-        self.friend = friend
-        self.schedule = scheduleTS.dateValue()
-        self.icon = icon
-        self.colorHex = colorHex
-        self.days = daysRaw.compactMap {
-            if let n = $0 as? NSNumber { return n.intValue }
-            if let n = $0 as? Int { return n }
-            return nil
-        }
-        self.motivation = document["motivation"] as? String
-        self.remindIfMiss = remindIfMiss
-        self.doneDates = document["doneDates"] as? [String: Bool] ?? [:]
-    }
-
-    /// Helper for today date string
     static func dateString(for date: Date = Date()) -> String {
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd"
-        df.timeZone = .current
         return df.string(from: date)
-    }
-
-    /// Check if marked done for today
-    func isDoneToday() -> Bool {
-        doneDates[Habit.dateString()] == true
     }
 }

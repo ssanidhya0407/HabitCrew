@@ -203,7 +203,6 @@ class HabitsListViewController: UIViewController {
     }
 
     private func setupUI() {
-        // Welcome and subtitle at the very top
         view.addSubview(greetingLabel)
         view.addSubview(subtitleLabel)
         NSLayoutConstraint.activate([
@@ -215,7 +214,6 @@ class HabitsListViewController: UIViewController {
             subtitleLabel.trailingAnchor.constraint(equalTo: greetingLabel.trailingAnchor),
         ])
 
-        // Motivation Card
         view.addSubview(motivationCard)
         motivationCard.addSubview(motivationLabel)
         motivationCard.addSubview(motivationButtonStack)
@@ -242,7 +240,6 @@ class HabitsListViewController: UIViewController {
         writeMotivationButton.addTarget(self, action: #selector(writeMotivationTapped), for: .touchUpInside)
         readMotivationButton.addTarget(self, action: #selector(readMotivationTapped), for: .touchUpInside)
 
-        // Add Habit Button at bottom
         view.addSubview(addHabitButton)
         NSLayoutConstraint.activate([
             addHabitButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
@@ -251,7 +248,6 @@ class HabitsListViewController: UIViewController {
             addHabitButton.heightAnchor.constraint(equalToConstant: 65)
         ])
 
-        // Card background & blur
         view.addSubview(cardView)
         cardView.addSubview(blurView)
         NSLayoutConstraint.activate([
@@ -267,7 +263,6 @@ class HabitsListViewController: UIViewController {
             blurView.bottomAnchor.constraint(equalTo: cardView.bottomAnchor)
         ])
 
-        // TableView inside cardView
         cardView.addSubview(tableView)
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 8),
@@ -406,9 +401,19 @@ extension HabitsListViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let habit = habits[indexPath.row]
         let cell = tableView.dequeueReusableCell(withIdentifier: "habitcard", for: indexPath) as! HabitCardCell
-        cell.configure(with: habit)
+
+        // Check if this habit is scheduled for today
+        let calendar = Calendar.current
+        let today = Date()
+        let weekday = (calendar.component(.weekday, from: today) + 6) % 7 // Sunday=0
+        let isScheduledToday = habit.days.contains(weekday)
+
+        cell.configure(with: habit, isScheduledToday: isScheduledToday)
         cell.onCardTapped = { [weak self] in
-            self?.markHabitToggleDoneForToday(habit)
+            guard let self = self else { return }
+            if isScheduledToday {
+                self.markHabitToggleDoneForToday(habit)
+            }
         }
         cell.onDetailsTapped = { [weak self] in
             self?.showHabitDetails(habit)
@@ -438,6 +443,7 @@ class HabitCardCell: UITableViewCell {
 
     var onCardTapped: (() -> Void)?
     var onDetailsTapped: (() -> Void)?
+    private var isScheduledToday: Bool = true // Default true for safety
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -445,9 +451,16 @@ class HabitCardCell: UITableViewCell {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(with habit: Habit) {
+    func configure(with habit: Habit, isScheduledToday: Bool = true) {
+        self.isScheduledToday = isScheduledToday
         let color = UIColor(hex: habit.colorHex) ?? .systemBlue
-        card.backgroundColor = color.withAlphaComponent(habit.isDoneToday() ? 0.3 : 0.13) // All cards same shade
+
+        // Set highlight for today: green border if done, only if scheduled for today
+        let isDoneToday = habit.isDoneToday()
+        card.layer.borderWidth = (isDoneToday && isScheduledToday) ? 3 : 0
+        card.layer.borderColor = (isDoneToday && isScheduledToday) ? UIColor.systemGreen.cgColor : UIColor.clear.cgColor
+        card.backgroundColor = color.withAlphaComponent(isDoneToday ? 0.3 : 0.13)
+
         iconView.image = UIImage(systemName: habit.icon)?.withRenderingMode(.alwaysTemplate)
         iconView.tintColor = color
         titleLabel.text = habit.title
@@ -477,6 +490,10 @@ class HabitCardCell: UITableViewCell {
         timeLabel.text = timeFormatter.string(from: habit.schedule)
         timeLabel.font = UIFont.monospacedDigitSystemFont(ofSize: 15.5, weight: .medium)
         timeLabel.textColor = color
+
+        // Enable/disable tap gesture for today/habit scheduling
+        card.isUserInteractionEnabled = isScheduledToday
+        card.alpha = isScheduledToday ? 1.0 : 0.5
     }
 
     private func setup() {
@@ -544,18 +561,18 @@ class HabitCardCell: UITableViewCell {
             timeLabel.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
         ])
 
-        // Tap gesture for marking done/undone
         let tap = UITapGestureRecognizer(target: self, action: #selector(cardTapped))
         card.addGestureRecognizer(tap)
         card.isUserInteractionEnabled = true
 
-        // Long press for details
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(cardLongPressed))
         card.addGestureRecognizer(longPress)
     }
 
     @objc private func cardTapped() {
-        onCardTapped?()
+        if isScheduledToday {
+            onCardTapped?()
+        }
     }
     @objc private func cardLongPressed(_ recognizer: UILongPressGestureRecognizer) {
         if recognizer.state == .began {
