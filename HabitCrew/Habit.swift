@@ -14,6 +14,7 @@ struct Habit {
     let motivation: String?
     let remindIfMiss: Bool
     var doneDates: [String: Bool]
+    var isPublic: Bool  // <-- Add this field for privacy/public toggle
 
     init(
         id: String = UUID().uuidString,
@@ -27,7 +28,8 @@ struct Habit {
         days: [Int] = [],
         motivation: String? = nil,
         remindIfMiss: Bool = true,
-        doneDates: [String: Bool] = [:]
+        doneDates: [String: Bool] = [:],
+        isPublic: Bool = true  // <-- default to true (public)
     ) {
         self.id = id
         self.title = title
@@ -41,6 +43,7 @@ struct Habit {
         self.motivation = motivation
         self.remindIfMiss = remindIfMiss
         self.doneDates = doneDates
+        self.isPublic = isPublic
     }
 
     init?(from dict: [String: Any]) {
@@ -64,6 +67,7 @@ struct Habit {
         self.motivation = dict["motivation"] as? String
         self.remindIfMiss = dict["remindIfMiss"] as? Bool ?? true
         self.doneDates = dict["doneDates"] as? [String: Bool] ?? [:]
+        self.isPublic = dict["isPublic"] as? Bool ?? true  // <-- read from Firestore, default true
     }
 
     var dictionary: [String: Any] {
@@ -79,7 +83,8 @@ struct Habit {
             "days": days,
             "motivation": motivation ?? "",
             "remindIfMiss": remindIfMiss,
-            "doneDates": doneDates
+            "doneDates": doneDates,
+            "isPublic": isPublic    // <-- save to Firestore
         ]
     }
 
