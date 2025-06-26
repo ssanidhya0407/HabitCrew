@@ -239,6 +239,7 @@ class HabitsListViewController: UIViewController {
             profileButton.heightAnchor.constraint(equalToConstant: 32),
         ])
         addHabitButton.addTarget(self, action: #selector(addHabitTapped), for: .touchUpInside)
+        profileButton.addTarget(self, action: #selector(profileButtonTapped), for: .touchUpInside)
     }
 
     private func setupMotivation() {
@@ -376,6 +377,11 @@ class HabitsListViewController: UIViewController {
         let addVC = AddHabitViewController()
         addVC.delegate = self
         navigationController?.pushViewController(addVC, animated: true)
+    }
+    @objc private func profileButtonTapped() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let profileVC = ProfileViewController()
+        navigationController?.pushViewController(profileVC, animated: true)
     }
 
     // MARK: - FIRESTORE SYNC
