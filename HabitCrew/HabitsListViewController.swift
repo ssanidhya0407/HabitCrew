@@ -3,15 +3,46 @@ import FirebaseAuth
 import FirebaseFirestore
 import AVFoundation
 
+enum HabitListTab: Int, CaseIterable {
+    case all, today, unchecked, done
+
+    var title: String {
+        switch self {
+        case .all: return "All Habits"
+        case .today: return "Today"
+        case .unchecked: return "Unchecked"
+        case .done: return "Done"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .all: return "tray.full"
+        case .today: return "calendar"
+        case .unchecked: return "circle"
+        case .done: return "checkmark.circle.fill"
+        }
+    }
+    var color: UIColor {
+        switch self {
+        case .all: return UIColor.systemBlue
+        case .today: return UIColor.systemGray
+        case .unchecked: return UIColor.systemOrange
+        case .done: return UIColor.systemGreen
+        }
+    }
+}
+
 class HabitsListViewController: UIViewController {
 
     private var habits: [Habit] = []
+    private var filteredHabits: [Habit] = []
+    private var selectedTab: HabitListTab = .all {
+        didSet { filterHabitsAndReload(); categoryTabBar.setNeedsDisplay() }
+    }
     private let db = Firestore.firestore()
     private var habitsListener: ListenerRegistration?
 
     private let gradientLayer = CAGradientLayer()
-    private let decorativeBlob1 = UIView()
-    private let decorativeBlob2 = UIView()
     private let speechSynthesizer = AVSpeechSynthesizer()
 
     // Motivation
@@ -19,24 +50,39 @@ class HabitsListViewController: UIViewController {
         didSet { updateMotivationLabel() }
     }
 
-    // Greeting and subtitle
-    private let greetingLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 32, weight: .bold)
-        label.textColor = .label
-        label.textAlignment = .left
-        label.numberOfLines = 1
-        label.text = "Welcome 👋"
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
+    // Top Bar
+    private let topBar = UIView()
+    private let addHabitButton: UIButton = {
+        let button = UIButton(type: .roundedRect)
+        let plus = UIImage(systemName: "plus.circle.fill")
+        button.setImage(plus, for: .normal)
+        button.setTitle(" Add Habit", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 19, weight: .medium)
+        button.setTitleColor(.systemBlue, for: .normal)
+        button.tintColor = .systemBlue
+        button.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.07)
+        button.layer.cornerRadius = 12
+        button.layer.cornerCurve = .continuous
+        button.layer.masksToBounds = true
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.contentEdgeInsets = UIEdgeInsets(top: 0, left: 18, bottom: 0, right: 18)
+        return button
     }()
-    private let subtitleLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 18, weight: .medium)
-        label.textColor = .secondaryLabel
-        label.text = "Here are your habits for today"
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
+    private let notificationButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "bell.fill"), for: .normal)
+        button.tintColor = .systemGray
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    private let profileButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "person.crop.circle"), for: .normal)
+        button.tintColor = .systemGray
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.layer.cornerRadius = 20
+        button.clipsToBounds = true
+        return button
     }()
 
     // Motivation Card
@@ -107,6 +153,10 @@ class HabitsListViewController: UIViewController {
         return stack
     }()
 
+    // CATEGORY BAR - like screenshot: all tabs visible, compact, icon above, underline, no scroll
+    private let categoryTabBar = CategoryTabBar()
+
+    // MAIN CARD & TABLE
     private let cardView: UIView = {
         let v = UIView()
         v.translatesAutoresizingMaskIntoConstraints = false
@@ -126,49 +176,33 @@ class HabitsListViewController: UIViewController {
         v.translatesAutoresizingMaskIntoConstraints = false
         return v
     }()
-
     private let tableView: UITableView = {
         let table = UITableView(frame: .zero, style: .plain)
         table.backgroundColor = .clear
         table.separatorStyle = .none
         table.translatesAutoresizingMaskIntoConstraints = false
         table.showsVerticalScrollIndicator = false
-        table.contentInset = UIEdgeInsets(top: 10, left: 0, bottom: 0, right: 0)
-        table.rowHeight = 88
+        table.contentInset = UIEdgeInsets.zero
+        table.rowHeight = 116
         return table
-    }()
-
-    private let addHabitButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Add Habit", for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 20, weight: .bold)
-        button.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.16)
-        button.setTitleColor(.systemBlue, for: .normal)
-        button.layer.cornerRadius = 16
-        button.layer.cornerCurve = .continuous
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.layer.shadowColor = UIColor.systemBlue.withAlphaComponent(0.10).cgColor
-        button.layer.shadowOpacity = 1.0
-        button.layer.shadowRadius = 12
-        button.layer.shadowOffset = CGSize(width: 0, height: 4)
-        return button
     }()
 
     override func viewDidLoad() {
         super.viewDidLoad()
         setupGradientBackground()
-        setupDecorativeBlobs()
-        setupUI()
-        populateUserInfo()
+        setupTopBar()
+        setupMotivation()
+        setupTabBar()
+        setupMainCardAndTable()
         fetchUserMotivation()
         listenForHabits()
+        populateProfile()
     }
 
-    deinit {
-        habitsListener?.remove()
-    }
+    deinit { habitsListener?.remove() }
 
     private func setupGradientBackground() {
+        // Subtle blue-gradient background, no blobs
         gradientLayer.colors = [
             UIColor(red: 0.94, green: 0.97, blue: 1.0, alpha: 1).cgColor,
             UIColor(red: 0.97, green: 0.94, blue: 1.0, alpha: 1).cgColor,
@@ -179,82 +213,85 @@ class HabitsListViewController: UIViewController {
         view.layer.insertSublayer(gradientLayer, at: 0)
     }
 
-    private func setupDecorativeBlobs() {
-        decorativeBlob1.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.08)
-        decorativeBlob1.layer.cornerRadius = 100
-        decorativeBlob1.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(decorativeBlob1)
+    private func setupTopBar() {
+        view.addSubview(topBar)
+        topBar.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            decorativeBlob1.widthAnchor.constraint(equalToConstant: 190),
-            decorativeBlob1.heightAnchor.constraint(equalToConstant: 190),
-            decorativeBlob1.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: -48),
-            decorativeBlob1.topAnchor.constraint(equalTo: view.topAnchor, constant: -48)
+            topBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 0),
+            topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 0),
+            topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: 0),
+            topBar.heightAnchor.constraint(equalToConstant: 50)
         ])
-        decorativeBlob2.backgroundColor = UIColor.systemPurple.withAlphaComponent(0.07)
-        decorativeBlob2.layer.cornerRadius = 100
-        decorativeBlob2.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(decorativeBlob2)
+        topBar.addSubview(addHabitButton)
+        topBar.addSubview(notificationButton)
+        topBar.addSubview(profileButton)
         NSLayoutConstraint.activate([
-            decorativeBlob2.widthAnchor.constraint(equalToConstant: 190),
-            decorativeBlob2.heightAnchor.constraint(equalToConstant: 190),
-            decorativeBlob2.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: 48),
-            decorativeBlob2.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: 48)
+            addHabitButton.leadingAnchor.constraint(equalTo: topBar.leadingAnchor, constant: 10),
+            addHabitButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+            addHabitButton.heightAnchor.constraint(equalToConstant: 34),
+            notificationButton.trailingAnchor.constraint(equalTo: profileButton.leadingAnchor, constant: -4),
+            notificationButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+            notificationButton.widthAnchor.constraint(equalToConstant: 32),
+            notificationButton.heightAnchor.constraint(equalToConstant: 32),
+            profileButton.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: -10),
+            profileButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+            profileButton.widthAnchor.constraint(equalToConstant: 32),
+            profileButton.heightAnchor.constraint(equalToConstant: 32),
         ])
+        addHabitButton.addTarget(self, action: #selector(addHabitTapped), for: .touchUpInside)
     }
 
-    private func setupUI() {
-        view.addSubview(greetingLabel)
-        view.addSubview(subtitleLabel)
-        NSLayoutConstraint.activate([
-            greetingLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 0),
-            greetingLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 30),
-            greetingLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -25),
-            subtitleLabel.topAnchor.constraint(equalTo: greetingLabel.bottomAnchor, constant: 4),
-            subtitleLabel.leadingAnchor.constraint(equalTo: greetingLabel.leadingAnchor),
-            subtitleLabel.trailingAnchor.constraint(equalTo: greetingLabel.trailingAnchor),
-        ])
-
+    private func setupMotivation() {
         view.addSubview(motivationCard)
         motivationCard.addSubview(motivationLabel)
         motivationCard.addSubview(motivationButtonStack)
         motivationButtonStack.addArrangedSubview(writeMotivationButton)
         motivationButtonStack.addArrangedSubview(readMotivationButton)
         NSLayoutConstraint.activate([
-            motivationCard.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 16),
-            motivationCard.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            motivationCard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            motivationCard.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 4),
+            motivationCard.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
+            motivationCard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
         ])
         NSLayoutConstraint.activate([
-            motivationLabel.topAnchor.constraint(equalTo: motivationCard.topAnchor, constant: 16),
-            motivationLabel.leadingAnchor.constraint(equalTo: motivationCard.leadingAnchor, constant: 16),
-            motivationLabel.trailingAnchor.constraint(equalTo: motivationCard.trailingAnchor, constant: -16),
+            motivationLabel.topAnchor.constraint(equalTo: motivationCard.topAnchor, constant: 12),
+            motivationLabel.leadingAnchor.constraint(equalTo: motivationCard.leadingAnchor, constant: 12),
+            motivationLabel.trailingAnchor.constraint(equalTo: motivationCard.trailingAnchor, constant: -12),
         ])
         NSLayoutConstraint.activate([
-            motivationButtonStack.topAnchor.constraint(equalTo: motivationLabel.bottomAnchor, constant: 12),
-            motivationButtonStack.leadingAnchor.constraint(equalTo: motivationCard.leadingAnchor, constant: 16),
-            motivationButtonStack.trailingAnchor.constraint(equalTo: motivationCard.trailingAnchor, constant: -16),
-            motivationButtonStack.bottomAnchor.constraint(equalTo: motivationCard.bottomAnchor, constant: -16),
-            motivationButtonStack.heightAnchor.constraint(equalToConstant: 44)
+            motivationButtonStack.topAnchor.constraint(equalTo: motivationLabel.bottomAnchor, constant: 7),
+            motivationButtonStack.leadingAnchor.constraint(equalTo: motivationCard.leadingAnchor, constant: 12),
+            motivationButtonStack.trailingAnchor.constraint(equalTo: motivationCard.trailingAnchor, constant: -12),
+            motivationButtonStack.bottomAnchor.constraint(equalTo: motivationCard.bottomAnchor, constant: -12),
+            motivationButtonStack.heightAnchor.constraint(equalToConstant: 36)
         ])
-
         writeMotivationButton.addTarget(self, action: #selector(writeMotivationTapped), for: .touchUpInside)
         readMotivationButton.addTarget(self, action: #selector(readMotivationTapped), for: .touchUpInside)
+    }
 
-        view.addSubview(addHabitButton)
+    private func setupTabBar() {
+        view.addSubview(categoryTabBar)
+        categoryTabBar.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            addHabitButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            addHabitButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            addHabitButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -18),
-            addHabitButton.heightAnchor.constraint(equalToConstant: 65)
+            categoryTabBar.topAnchor.constraint(equalTo: motivationCard.bottomAnchor, constant: 8),
+            categoryTabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            categoryTabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            categoryTabBar.heightAnchor.constraint(equalToConstant: 66)
         ])
+        categoryTabBar.configure(tabs: HabitListTab.allCases, selected: selectedTab.rawValue)
+        categoryTabBar.onTabSelected = { [weak self] idx in
+            guard let self = self else { return }
+            self.selectedTab = HabitListTab(rawValue: idx) ?? .all
+        }
+    }
 
+    private func setupMainCardAndTable() {
         view.addSubview(cardView)
         cardView.addSubview(blurView)
         NSLayoutConstraint.activate([
-            cardView.topAnchor.constraint(equalTo: motivationCard.bottomAnchor, constant: 10),
-            cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 0),
-            cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: 0),
-            cardView.bottomAnchor.constraint(equalTo: addHabitButton.topAnchor, constant: -18)
+            cardView.topAnchor.constraint(equalTo: categoryTabBar.bottomAnchor, constant: 4),
+            cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            cardView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ])
         NSLayoutConstraint.activate([
             blurView.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
@@ -262,7 +299,6 @@ class HabitsListViewController: UIViewController {
             blurView.topAnchor.constraint(equalTo: cardView.topAnchor),
             blurView.bottomAnchor.constraint(equalTo: cardView.bottomAnchor)
         ])
-
         cardView.addSubview(tableView)
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 8),
@@ -270,24 +306,25 @@ class HabitsListViewController: UIViewController {
             tableView.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -8),
             tableView.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -8)
         ])
-
-        tableView.contentInset = UIEdgeInsets(top: 5, left: 0, bottom: 0, right: 0)
-        tableView.rowHeight = 100
+        tableView.contentInset = .zero
+        tableView.rowHeight = 116
         tableView.register(HabitCardCell.self, forCellReuseIdentifier: "habitcard")
-
-        addHabitButton.addTarget(self, action: #selector(addHabitTapped), for: .touchUpInside)
         tableView.dataSource = self
         tableView.delegate = self
     }
 
-    private func populateUserInfo() {
-        if let user = Auth.auth().currentUser {
-            let displayName = user.displayName ?? ""
-            greetingLabel.text = displayName.isEmpty ? "Welcome 👋" : "Welcome, \(displayName) 👋"
+    private func populateProfile() {
+        if let currentUser = Auth.auth().currentUser, let url = currentUser.photoURL {
+            URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+                guard let data = data, let image = UIImage(data: data) else { return }
+                DispatchQueue.main.async {
+                    self?.profileButton.setImage(image.withRenderingMode(.alwaysOriginal), for: .normal)
+                }
+            }.resume()
         }
     }
 
-    // MARK: - Motivation CRUD
+    // MARK: - MOTIVATION CRUD
 
     private func fetchUserMotivation() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
@@ -300,15 +337,13 @@ class HabitsListViewController: UIViewController {
             }
         }
     }
-
     private func updateMotivationLabel() {
         if let motivation = self.userMotivation, !motivation.isEmpty {
-            self.motivationLabel.text = "✨ Your Motivation: \(motivation)"
+            self.motivationLabel.text = "\(motivation)"
         } else {
             self.motivationLabel.text = "Stay motivated! 🚀"
         }
     }
-
     @objc private func writeMotivationTapped() {
         let alert = UIAlertController(title: "Write Motivation", message: "Enter something to motivate yourself!", preferredStyle: .alert)
         alert.addTextField { textField in
@@ -327,7 +362,6 @@ class HabitsListViewController: UIViewController {
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         present(alert, animated: true)
     }
-
     @objc private func readMotivationTapped() {
         let text = (self.userMotivation?.isEmpty ?? true) ? "No motivation set yet!" : self.userMotivation!
         let utterance = AVSpeechUtterance(string: text)
@@ -337,7 +371,6 @@ class HabitsListViewController: UIViewController {
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }
-
     @objc private func addHabitTapped() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         let addVC = AddHabitViewController()
@@ -345,7 +378,7 @@ class HabitsListViewController: UIViewController {
         navigationController?.pushViewController(addVC, animated: true)
     }
 
-    // MARK: - Firebase Sync
+    // MARK: - FIRESTORE SYNC
 
     private func listenForHabits() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
@@ -360,10 +393,9 @@ class HabitsListViewController: UIViewController {
                 }
                 guard let documents = snapshot?.documents else { return }
                 self.habits = documents.compactMap { doc in Habit(from: doc.data()) }
-                self.tableView.reloadData()
+                self.filterHabitsAndReload()
             }
     }
-
     private func saveHabitToFirestore(_ habit: Habit) {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let ref = db.collection("users").document(uid).collection("habits").document(habit.id)
@@ -373,8 +405,22 @@ class HabitsListViewController: UIViewController {
             }
         }
     }
-
-    // MARK: - Mark Habit Toggle Done/Undone
+    private func filterHabitsAndReload() {
+        let calendar = Calendar.current
+        let today = Date()
+        let weekday = (calendar.component(.weekday, from: today) + 6) % 7
+        switch selectedTab {
+        case .all:
+            filteredHabits = habits
+        case .today:
+            filteredHabits = habits.filter { $0.days.contains(weekday) }
+        case .unchecked:
+            filteredHabits = habits.filter { $0.days.contains(weekday) && !$0.isDoneToday() }
+        case .done:
+            filteredHabits = habits.filter { $0.days.contains(weekday) && $0.isDoneToday() }
+        }
+        tableView.reloadData()
+    }
     func markHabitToggleDoneForToday(_ habit: Habit) {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         var updatedHabit = habit
@@ -384,11 +430,114 @@ class HabitsListViewController: UIViewController {
         db.collection("users").document(uid).collection("habits").document(habit.id)
             .setData(updatedHabit.dictionary, merge: true)
     }
-
-    // MARK: - Show Details
     func showHabitDetails(_ habit: Habit) {
         let detailsVC = HabitDetailViewController(habit: habit)
         navigationController?.pushViewController(detailsVC, animated: true)
+    }
+    private func editHabit(_ habit: Habit) {
+        let addVC = AddHabitViewController(habitToEdit: habit)
+        addVC.delegate = self
+        navigationController?.pushViewController(addVC, animated: true)
+    }
+    private func deleteHabit(_ habit: Habit) {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        db.collection("users").document(uid).collection("habits").document(habit.id).delete()
+    }
+}
+
+// MARK: - CategoryTabBar
+class CategoryTabBar: UIView {
+    private var tabViews: [UIView] = []
+    private var underline: UIView?
+    private var tabs: [HabitListTab] = []
+    var onTabSelected: ((Int) -> Void)?
+
+    private let iconSize: CGFloat = 24
+    private let tabHeight: CGFloat = 60
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func configure(tabs: [HabitListTab], selected: Int) {
+        self.tabs = tabs
+        tabViews.forEach { $0.removeFromSuperview() }
+        tabViews = []
+        let count = tabs.count
+        let tabWidth = UIScreen.main.bounds.width / CGFloat(count)
+        for (i, tab) in tabs.enumerated() {
+            let v = UIButton(type: .custom)
+            v.frame = CGRect(x: CGFloat(i) * tabWidth, y: 0, width: tabWidth, height: tabHeight)
+            v.addTarget(self, action: #selector(tabTapped(_:)), for: .touchUpInside)
+            v.tag = i
+
+            let iconView = UIImageView(image: UIImage(systemName: tab.icon))
+            iconView.tintColor = (i == selected) ? tab.color : .systemGray3
+            iconView.contentMode = .scaleAspectFit
+            iconView.translatesAutoresizingMaskIntoConstraints = false
+
+            let label = UILabel()
+            label.text = tab.title
+            label.font = i == selected ? .boldSystemFont(ofSize: 13.5) : .systemFont(ofSize: 13.5, weight: .medium)
+            label.textColor = (i == selected) ? tab.color : .systemGray3
+            label.textAlignment = .center
+            label.translatesAutoresizingMaskIntoConstraints = false
+
+            v.addSubview(iconView)
+            v.addSubview(label)
+            NSLayoutConstraint.activate([
+                iconView.centerXAnchor.constraint(equalTo: v.centerXAnchor),
+                iconView.topAnchor.constraint(equalTo: v.topAnchor, constant: 7),
+                iconView.widthAnchor.constraint(equalToConstant: iconSize),
+                iconView.heightAnchor.constraint(equalToConstant: iconSize),
+                label.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 3),
+                label.centerXAnchor.constraint(equalTo: v.centerXAnchor),
+                label.widthAnchor.constraint(equalToConstant: tabWidth - 12)
+            ])
+            tabViews.append(v)
+            addSubview(v)
+        }
+        underline?.removeFromSuperview()
+        let underline = UIView()
+        underline.backgroundColor = tabs[selected].color
+        underline.layer.cornerRadius = 2
+        let uw = tabWidth * 0.56
+        underline.frame = CGRect(x: CGFloat(selected) * tabWidth + (tabWidth - uw)/2, y: tabHeight-4, width: uw, height: 3)
+        addSubview(underline)
+        self.underline = underline
+    }
+
+    @objc private func tabTapped(_ sender: UIButton) {
+        setSelected(idx: sender.tag)
+        onTabSelected?(sender.tag)
+    }
+
+    func setSelected(idx: Int) {
+        guard !tabs.isEmpty else { return }
+        let count = tabs.count
+        let tabWidth = UIScreen.main.bounds.width / CGFloat(count)
+        for (i, v) in tabViews.enumerated() {
+            let tab = tabs[i]
+            let iconView = v.subviews.compactMap{ $0 as? UIImageView }.first
+            let label = v.subviews.compactMap{ $0 as? UILabel }.first
+            iconView?.tintColor = (i == idx) ? tab.color : .systemGray3
+            label?.font = i == idx ? .boldSystemFont(ofSize: 13.5) : .systemFont(ofSize: 13.5, weight: .medium)
+            label?.textColor = (i == idx) ? tab.color : .systemGray3
+        }
+        underline?.backgroundColor = tabs[idx].color
+        let uw = tabWidth * 0.56
+        UIView.animate(withDuration: 0.15) {
+            self.underline?.frame = CGRect(x: CGFloat(idx) * tabWidth + (tabWidth - uw)/2, y: self.tabHeight-4, width: uw, height: 3)
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if !tabs.isEmpty {
+            configure(tabs: tabs, selected: tabViews.firstIndex(where: { ($0.subviews.compactMap{ $0 as? UILabel }.first?.font == UIFont.boldSystemFont(ofSize: 13.5)) }) ?? 0)
+        }
     }
 }
 
@@ -396,19 +545,16 @@ class HabitsListViewController: UIViewController {
 
 extension HabitsListViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return habits.count
+        return filteredHabits.count
     }
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let habit = habits[indexPath.row]
+        let habit = filteredHabits[indexPath.row]
         let cell = tableView.dequeueReusableCell(withIdentifier: "habitcard", for: indexPath) as! HabitCardCell
-
-        // Check if this habit is scheduled for today
         let calendar = Calendar.current
         let today = Date()
-        let weekday = (calendar.component(.weekday, from: today) + 6) % 7 // Sunday=0
+        let weekday = (calendar.component(.weekday, from: today) + 6) % 7
         let isScheduledToday = habit.days.contains(weekday)
-
-        cell.configure(with: habit, isScheduledToday: isScheduledToday)
+        cell.configureNoIcon(with: habit, isScheduledToday: isScheduledToday)
         cell.onCardTapped = { [weak self] in
             guard let self = self else { return }
             if isScheduledToday {
@@ -420,6 +566,33 @@ extension HabitsListViewController: UITableViewDataSource, UITableViewDelegate {
         }
         return cell
     }
+    // Swipe actions
+    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        // Delete card style
+        let habit = filteredHabits[indexPath.row]
+        let delete = UIContextualAction(style: .destructive, title: nil) { [weak self] (_, _, completion) in
+            self?.deleteHabit(habit)
+            completion(true)
+        }
+        let icon = UIImage(systemName: "trash.fill")
+        delete.image = icon
+        delete.backgroundColor = UIColor.systemRed.withAlphaComponent(0.13)
+        delete.title = nil
+        return UISwipeActionsConfiguration(actions: [delete])
+    }
+    func tableView(_ tableView: UITableView, leadingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        // Edit card style
+        let habit = filteredHabits[indexPath.row]
+        let edit = UIContextualAction(style: .normal, title: nil) { [weak self] (_, _, completion) in
+            self?.editHabit(habit)
+            completion(true)
+        }
+        let icon = UIImage(systemName: "pencil")
+        edit.image = icon
+        edit.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.13)
+        edit.title = nil
+        return UISwipeActionsConfiguration(actions: [edit])
+    }
 }
 
 // MARK: - AddHabitViewControllerDelegate
@@ -427,23 +600,30 @@ extension HabitsListViewController: UITableViewDataSource, UITableViewDelegate {
 extension HabitsListViewController: AddHabitViewControllerDelegate {
     func didAddHabit(_ habit: Habit) {
         saveHabitToFirestore(habit)
-        // Listener will auto-refresh table
+    }
+    func didEditHabit(_ habit: Habit) {
+        saveHabitToFirestore(habit)
     }
 }
 
-// MARK: - Apple-style Habit Card Cell
+// MARK: - Apple-style Habit Card Cell (without icon)
 
 class HabitCardCell: UITableViewCell {
     private let card = UIView()
-    private let iconView = UIImageView()
     private let titleLabel = UILabel()
     private let noteLabel = UILabel()
     private let daysStack = UIStackView()
     private let timeLabel = UILabel()
+    private let detailsArrow: UIImageView = {
+        let iv = UIImageView(image: UIImage(systemName: "chevron.right"))
+        iv.tintColor = .systemFill
+        iv.translatesAutoresizingMaskIntoConstraints = false
+        return iv
+    }()
 
     var onCardTapped: (() -> Void)?
     var onDetailsTapped: (() -> Void)?
-    private var isScheduledToday: Bool = true // Default true for safety
+    private var isScheduledToday: Bool = true
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -451,18 +631,14 @@ class HabitCardCell: UITableViewCell {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(with habit: Habit, isScheduledToday: Bool = true) {
+    func configureNoIcon(with habit: Habit, isScheduledToday: Bool = true) {
         self.isScheduledToday = isScheduledToday
         let color = UIColor(hex: habit.colorHex) ?? .systemBlue
-
-        // Set highlight for today: green border if done, only if scheduled for today
         let isDoneToday = habit.isDoneToday()
-        card.layer.borderWidth = (isDoneToday && isScheduledToday) ? 3 : 0
-        card.layer.borderColor = (isDoneToday && isScheduledToday) ? UIColor.systemGreen.cgColor : UIColor.clear.cgColor
-        card.backgroundColor = color.withAlphaComponent(isDoneToday ? 0.3 : 0.13)
+        card.layer.borderWidth = 0
+        card.layer.borderColor = UIColor.clear.cgColor
+        card.backgroundColor = isDoneToday ? color.withAlphaComponent(0.26) : color.withAlphaComponent(0.13)
 
-        iconView.image = UIImage(systemName: habit.icon)?.withRenderingMode(.alwaysTemplate)
-        iconView.tintColor = color
         titleLabel.text = habit.title
         noteLabel.text = habit.note
 
@@ -477,7 +653,7 @@ class HabitCardCell: UITableViewCell {
             lbl.text = day
             lbl.font = UIFont.systemFont(ofSize: 13.5, weight: .semibold)
             lbl.textAlignment = .center
-            lbl.textColor = isActive ? .white : UIColor(white: 0.67, alpha: 1)
+            lbl.textColor = .black // Black text for days
             lbl.backgroundColor = isActive ? color : UIColor.systemGray5
             lbl.layer.cornerRadius = 12
             lbl.layer.masksToBounds = true
@@ -489,9 +665,8 @@ class HabitCardCell: UITableViewCell {
         timeFormatter.timeStyle = .short
         timeLabel.text = timeFormatter.string(from: habit.schedule)
         timeLabel.font = UIFont.monospacedDigitSystemFont(ofSize: 15.5, weight: .medium)
-        timeLabel.textColor = color
+        timeLabel.textColor = .black // Time in black
 
-        // Enable/disable tap gesture for today/habit scheduling
         card.isUserInteractionEnabled = isScheduledToday
         card.alpha = isScheduledToday ? 1.0 : 0.5
     }
@@ -504,66 +679,61 @@ class HabitCardCell: UITableViewCell {
         card.layer.cornerRadius = 19
         card.layer.masksToBounds = true
         contentView.addSubview(card)
-        card.addSubview(iconView)
         card.addSubview(titleLabel)
-        card.addSubview(noteLabel)
+        card.addSubview(detailsArrow)
         card.addSubview(daysStack)
         card.addSubview(timeLabel)
+        card.addSubview(noteLabel)
 
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-        iconView.contentMode = .scaleAspectFit
-        iconView.widthAnchor.constraint(equalToConstant: 36).isActive = true
-        iconView.heightAnchor.constraint(equalToConstant: 36).isActive = true
-        
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
         titleLabel.textColor = .label
-        
+
         noteLabel.translatesAutoresizingMaskIntoConstraints = false
         noteLabel.font = UIFont.systemFont(ofSize: 14, weight: .regular)
         noteLabel.textColor = .secondaryLabel
         noteLabel.numberOfLines = 1
-        
+
         daysStack.axis = .horizontal
         daysStack.spacing = 5
         daysStack.translatesAutoresizingMaskIntoConstraints = false
         daysStack.alignment = .center
         daysStack.distribution = .fill
-        
+
         timeLabel.translatesAutoresizingMaskIntoConstraints = false
         timeLabel.textAlignment = .right
 
         NSLayoutConstraint.activate([
-            card.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 10),
-            card.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -10),
+            card.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
+            card.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8),
             card.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 10),
             card.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -10),
 
-            iconView.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
-            iconView.centerYAnchor.constraint(equalTo: card.centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 36),
-            iconView.heightAnchor.constraint(equalToConstant: 36),
+            titleLabel.topAnchor.constraint(equalTo: card.topAnchor, constant: 14),
+            titleLabel.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
 
-            titleLabel.topAnchor.constraint(equalTo: card.topAnchor, constant: 16),
-            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 14),
-            titleLabel.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
+            detailsArrow.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            detailsArrow.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
+            detailsArrow.widthAnchor.constraint(equalToConstant: 20),
+            detailsArrow.heightAnchor.constraint(equalToConstant: 20),
 
-            noteLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
-            noteLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
-            noteLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: detailsArrow.leadingAnchor, constant: -10),
 
-            daysStack.topAnchor.constraint(equalTo: noteLabel.bottomAnchor, constant: 8),
+            daysStack.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 13),
             daysStack.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
             daysStack.heightAnchor.constraint(equalToConstant: 24),
 
             timeLabel.centerYAnchor.constraint(equalTo: daysStack.centerYAnchor),
-            timeLabel.leadingAnchor.constraint(greaterThanOrEqualTo: daysStack.trailingAnchor, constant: 14),
-            timeLabel.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
+            timeLabel.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16)
         ])
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(cardTapped))
         card.addGestureRecognizer(tap)
         card.isUserInteractionEnabled = true
+
+        let arrowTap = UITapGestureRecognizer(target: self, action: #selector(detailsTapped))
+        detailsArrow.isUserInteractionEnabled = true
+        detailsArrow.addGestureRecognizer(arrowTap)
 
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(cardLongPressed))
         card.addGestureRecognizer(longPress)
@@ -571,6 +741,13 @@ class HabitCardCell: UITableViewCell {
 
     @objc private func cardTapped() {
         if isScheduledToday {
+            UIView.animate(withDuration: 0.1, animations: {
+                self.card.backgroundColor = self.card.backgroundColor?.withAlphaComponent(0.40)
+            }, completion: { _ in
+                UIView.animate(withDuration: 0.15) {
+                    self.card.backgroundColor = self.card.backgroundColor?.withAlphaComponent(0.26)
+                }
+            })
             onCardTapped?()
         }
     }
@@ -578,6 +755,9 @@ class HabitCardCell: UITableViewCell {
         if recognizer.state == .began {
             onDetailsTapped?()
         }
+    }
+    @objc private func detailsTapped() {
+        onDetailsTapped?()
     }
 }
 
@@ -599,8 +779,4 @@ private extension UIColor {
         }
         self.init(red: r, green: g, blue: b, alpha: 1)
     }
-}
-
-#Preview(){
-    HabitsListViewController()
 }

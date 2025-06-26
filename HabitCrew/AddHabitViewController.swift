@@ -4,16 +4,16 @@ import FirebaseFirestore
 
 protocol AddHabitViewControllerDelegate: AnyObject {
     func didAddHabit(_ habit: Habit)
+    func didEditHabit(_ habit: Habit)
 }
-
 
 class AddHabitViewController: UIViewController {
 
     // MARK: - Properties
     weak var delegate: AddHabitViewControllerDelegate?
     private let db = Firestore.firestore()
-    private var selectedFriendOrGroup: String?  // The display name (for picker UI)
-    private var selectedFriendOrGroupId: String? // The friend uid or group id (for saving to Firebase)
+    private var selectedFriendOrGroup: String?
+    private var selectedFriendOrGroupId: String?
     private var selectedDate: Date?
     private var selectedTime: Date = Date()
     private var selectedIcon: String = "star.fill"
@@ -21,11 +21,21 @@ class AddHabitViewController: UIViewController {
     private var selectedDays: Set<Int> = [1,2,3,4,5,6,0]
     private var remindIfMiss: Bool = true
 
+    // Editing support
+    private var editingHabit: Habit?
+
+    // MARK: - Init for Add/Edit
+    init(habitToEdit: Habit? = nil) {
+        self.editingHabit = habitToEdit
+        super.init(nibName: nil, bundle: nil)
+    }
+    required init?(coder: NSCoder) { super.init(coder: coder) }
+
+    // MARK: - UI Elements
     private let gradientLayer = CAGradientLayer()
     private let decorativeBlob1 = UIView()
     private let decorativeBlob2 = UIView()
 
-    // Friend and group lists (with mapping to uids)
     private var friendsSource: [(id: String, display: String)] = []
     private var groupsSource: [(id: String, display: String)] = []
     private var combinedSource: [(id: String?, display: String)] {
@@ -41,7 +51,6 @@ class AddHabitViewController: UIViewController {
         return arr
     }
 
-    // MARK: - UI Elements
     private let topTitleLabel: UILabel = {
         let label = UILabel()
         label.text = "Add Habit"
@@ -51,7 +60,6 @@ class AddHabitViewController: UIViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-
     private let descLabel: UILabel = {
         let label = UILabel()
         label.text = "Craft your goal, pick your style, and get reminders to stay on track!"
@@ -62,8 +70,6 @@ class AddHabitViewController: UIViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-
-    // Card
     private let cardView: UIView = {
         let v = UIView()
         v.translatesAutoresizingMaskIntoConstraints = false
@@ -83,8 +89,7 @@ class AddHabitViewController: UIViewController {
         v.translatesAutoresizingMaskIntoConstraints = false
         return v
     }()
-
-    // MARK: - Fields
+    // MARK: - Fields (Rectangular, HIG style)
     private func themedTextField(_ placeholder: String, font: UIFont = .systemFont(ofSize: 17, weight: .regular)) -> UITextField {
         let field = UITextField()
         field.placeholder = placeholder
@@ -97,16 +102,13 @@ class AddHabitViewController: UIViewController {
         field.textColor = .label
         field.layer.cornerRadius = 12
         field.layer.cornerCurve = .continuous
-        field.layer.borderWidth = 1
-        field.layer.borderColor = UIColor { trait in
-            trait.userInterfaceStyle == .dark ?
-                UIColor(white: 0.28, alpha: 1) :
-                UIColor(white: 0.87, alpha: 1)
-        }.cgColor
+        field.layer.borderWidth = 1.5
+        field.layer.borderColor = UIColor.systemGray4.cgColor
         field.setLeftPaddingPoints(16)
         field.clearButtonMode = .whileEditing
-        field.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        field.heightAnchor.constraint(equalToConstant: 52).isActive = true
         field.translatesAutoresizingMaskIntoConstraints = false
+        field.autoresizingMask = [.flexibleWidth]
         return field
     }
     private lazy var nameField = themedTextField("Habit name", font: .systemFont(ofSize: 18, weight: .semibold))
@@ -118,36 +120,28 @@ class AddHabitViewController: UIViewController {
     }()
     private let friendPicker = UIPickerView()
 
-    // Customization Row
     private let iconColorRow = UIStackView()
     private let iconButton = UIButton(type: .system)
     private let colorButton = UIButton(type: .system)
-
-    // Date & Time Row
     private let dateTimeRow = UIStackView()
     private let dateButton = UIButton(type: .system)
     private let timeButton = UIButton(type: .system)
-
-    // Days Row (Apple style)
     private let daysStack = UIStackView()
     private var dayButtons: [UIButton] = []
-
-    // Streak/Reminder
     private let streakRow = UIStackView()
     private let streakLabel = UILabel()
     private let remindToggle = UISwitch()
     private let remindLabel = UILabel()
-
-    // Buttons
     private let saveButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("Create Habit", for: .normal)
+        button.setTitle("Save Habit", for: .normal)
         button.titleLabel?.font = UIFont.systemFont(ofSize: 20, weight: .bold)
         button.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.16)
         button.setTitleColor(.systemBlue, for: .normal)
         button.layer.cornerRadius = 14
         button.heightAnchor.constraint(equalToConstant: 52).isActive = true
         button.translatesAutoresizingMaskIntoConstraints = false
+        button.autoresizingMask = [.flexibleWidth]
         return button
     }()
     private let cancelButton: UIButton = {
@@ -158,12 +152,14 @@ class AddHabitViewController: UIViewController {
         button.backgroundColor = .clear
         button.heightAnchor.constraint(equalToConstant: 40).isActive = true
         button.translatesAutoresizingMaskIntoConstraints = false
+        button.autoresizingMask = [.flexibleWidth]
         return button
     }()
 
     // MARK: - View Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
+        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         setupGradientBackground()
         setupDecorativeBlobs()
         setupTopHeader()
@@ -199,8 +195,8 @@ class AddHabitViewController: UIViewController {
             blurView.topAnchor.constraint(equalTo: cardView.topAnchor),
             blurView.bottomAnchor.constraint(equalTo: cardView.bottomAnchor)
         ])
-
         fetchFriendsAndGroups()
+        applyEditingHabitIfNeeded()
     }
 
     override func viewDidLayoutSubviews() {
@@ -208,42 +204,120 @@ class AddHabitViewController: UIViewController {
         gradientLayer.frame = view.bounds
     }
 
-    // MARK: - Firestore fetch for friends and groups (corrected for id mapping)
-    private func fetchFriendsAndGroups() {
+    private func applyEditingHabitIfNeeded() {
+        guard let habit = editingHabit else { return }
+        topTitleLabel.text = "Edit Habit"
+        saveButton.setTitle("Save Changes", for: .normal)
+        nameField.text = habit.title
+        motivationField.text = habit.motivation
+        selectedFriendOrGroupId = habit.friend.isEmpty ? nil : habit.friend
+        selectedDate = habit.schedule
+        selectedTime = habit.schedule
+        selectedIcon = habit.icon
+        selectedColor = UIColor(hex: habit.colorHex) ?? .systemBlue
+        selectedDays = Set(habit.days)
+        remindIfMiss = habit.remindIfMiss ?? true
+
+        iconButton.setImage(UIImage(systemName: selectedIcon), for: .normal)
+        iconButton.tintColor = selectedColor
+        colorButton.tintColor = selectedColor
+        for (i, btn) in dayButtons.enumerated() {
+            let isOn = selectedDays.contains(i)
+            btn.backgroundColor = isOn ? selectedColor : UIColor.systemGray5
+            btn.setTitleColor(isOn ? .white : .label, for: .normal)
+        }
+        let df = DateFormatter()
+        df.dateStyle = .medium
+        dateButton.setTitle(df.string(from: habit.schedule), for: .normal)
+        let tf = DateFormatter()
+        tf.timeStyle = .short
+        timeButton.setTitle(tf.string(from: habit.schedule), for: .normal)
+        remindToggle.isOn = remindIfMiss
+    }
+
+    // ... All other methods unchanged ...
+
+    @objc private func saveTapped() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        guard let title = nameField.text, !title.trimmingCharacters(in: .whitespaces).isEmpty else {
+            nameField.shake()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
+        }
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        // Friends: /users/{uid}/friends, documentID is the friend's UID
-        db.collection("users").document(uid).collection("friends").getDocuments { [weak self] (snapshot, error) in
+        let note: String? = nil
+        guard let selectedDate = selectedDate else {
+            dateButton.shake()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
+        }
+        let calendar = Calendar.current
+        let combinedDate = calendar.date(
+            bySettingHour: calendar.component(.hour, from: selectedTime),
+            minute: calendar.component(.minute, from: selectedTime),
+            second: 0,
+            of: selectedDate
+        ) ?? Date()
+
+        var habit: Habit
+        if let editing = editingHabit {
+            // Edit existing
+            habit = editing.copyWith(
+                title: title,
+                note: note,
+                friend: selectedFriendOrGroupId ?? "",
+                schedule: combinedDate,
+                icon: selectedIcon,
+                colorHex: selectedColor.hexString,
+                days: Array(selectedDays),
+                motivation: motivationField.text,
+                remindIfMiss: remindIfMiss
+            )
+        } else {
+            // Create new
+            habit = Habit(
+                title: title,
+                note: note,
+                createdAt: Date(),
+                friend: selectedFriendOrGroupId ?? "",
+                schedule: combinedDate,
+                icon: selectedIcon,
+                colorHex: selectedColor.hexString,
+                days: Array(selectedDays),
+                motivation: motivationField.text,
+                remindIfMiss: remindIfMiss
+            )
+        }
+        let habitData = habit.dictionary
+        let habitId = habit.id
+
+        saveButton.showLoading(true)
+        db.collection("users").document(uid).collection("habits").document(habitId).setData(habitData) { [weak self] error in
             guard let self = self else { return }
-            self.friendsSource = snapshot?.documents.compactMap { doc in
-                let data = doc.data()
-                let id = doc.documentID
-                if let displayName = data["displayName"] as? String, !displayName.isEmpty {
-                    return (id: id, display: displayName)
+            DispatchQueue.main.async {
+                self.saveButton.showLoading(false)
+                if let error = error {
+                    let alert = UIAlertController(title: "Error", message: error.localizedDescription, preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self.present(alert, animated: true)
+                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                    return
                 }
-                if let name = data["name"] as? String, !name.isEmpty {
-                    return (id: id, display: name)
+                if self.editingHabit != nil {
+                    self.delegate?.didEditHabit(habit)
+                } else {
+                    self.delegate?.didAddHabit(habit)
                 }
-                if let email = data["email"] as? String, !email.isEmpty {
-                    return (id: id, display: email)
-                }
-                return nil
-            } ?? []
-            // Groups: /groups, id is the group doc id, name is display
-            self.db.collection("groups").whereField("memberUIDs", arrayContains: uid).getDocuments { [weak self] (groupSnap, error) in
-                guard let self = self else { return }
-                self.groupsSource = groupSnap?.documents.compactMap { doc in
-                    let data = doc.data()
-                    let id = doc.documentID
-                    if let name = data["name"] as? String {
-                        return (id: id, display: name)
-                    }
-                    return nil
-                } ?? []
-                DispatchQueue.main.async {
-                    self.friendPicker.reloadAllComponents()
-                }
+                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
             }
         }
+    }
+
+    @objc private func cancelTapped() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+    @objc private func dismissKeyboard() {
+        view.endEditing(true)
     }
 
     // MARK: - Gradient & Blobs
@@ -257,7 +331,6 @@ class AddHabitViewController: UIViewController {
         gradientLayer.frame = view.bounds
         view.layer.insertSublayer(gradientLayer, at: 0)
     }
-
     private func setupDecorativeBlobs() {
         decorativeBlob1.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.08)
         decorativeBlob1.layer.cornerRadius = 100
@@ -280,7 +353,6 @@ class AddHabitViewController: UIViewController {
             decorativeBlob2.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: 48)
         ])
     }
-
     private func setupTopHeader() {
         view.addSubview(topTitleLabel)
         view.addSubview(descLabel)
@@ -293,7 +365,6 @@ class AddHabitViewController: UIViewController {
             descLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -35)
         ])
     }
-
     private func setupFormStack() {
         let formStack = UIStackView()
         formStack.axis = .vertical
@@ -308,12 +379,10 @@ class AddHabitViewController: UIViewController {
             formStack.bottomAnchor.constraint(lessThanOrEqualTo: cardView.bottomAnchor, constant: -20)
         ])
 
-        // Fields
         formStack.addArrangedSubview(nameField)
         formStack.addArrangedSubview(motivationField)
         formStack.addArrangedSubview(friendField)
 
-        // Icon/Color (horizontal, light border, rounded)
         iconColorRow.axis = .horizontal
         iconColorRow.spacing = 12
         iconColorRow.alignment = .fill
@@ -351,7 +420,6 @@ class AddHabitViewController: UIViewController {
         iconColorRow.addArrangedSubview(colorButton)
         formStack.addArrangedSubview(iconColorRow)
 
-        // Date/Time (horizontal, modern Apple style)
         dateTimeRow.axis = .horizontal
         dateTimeRow.spacing = 12
         dateTimeRow.alignment = .fill
@@ -384,7 +452,6 @@ class AddHabitViewController: UIViewController {
         dateTimeRow.addArrangedSubview(timeButton)
         formStack.addArrangedSubview(dateTimeRow)
 
-        // Days (Apple-style rounded selectors)
         let daysLabel = UILabel()
         daysLabel.text = "Repeat On"
         daysLabel.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
@@ -404,7 +471,7 @@ class AddHabitViewController: UIViewController {
             btn.titleLabel?.font = UIFont.systemFont(ofSize: 15.5, weight: .semibold)
             btn.setTitleColor(selectedDays.contains(i) ? .white : .label, for: .normal)
             btn.backgroundColor = selectedDays.contains(i) ? selectedColor : UIColor.systemGray5
-            btn.layer.cornerRadius = 17.5 // fully pill shaped
+            btn.layer.cornerRadius = 17.5
             btn.layer.borderWidth = selectedDays.contains(i) ? 0 : 1
             btn.layer.borderColor = UIColor.systemGray3.cgColor
             btn.tag = i
@@ -417,7 +484,6 @@ class AddHabitViewController: UIViewController {
         daysStack.heightAnchor.constraint(equalToConstant: 35).isActive = true
         formStack.addArrangedSubview(daysStack)
 
-        // Streak & Reminder (horizontal, clean)
         streakRow.axis = .horizontal
         streakRow.spacing = 8
         streakRow.alignment = .center
@@ -437,73 +503,40 @@ class AddHabitViewController: UIViewController {
         formStack.addArrangedSubview(streakRow)
     }
 
-    // MARK: - Actions
-
-
-    @objc private func saveTapped() {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        guard let title = nameField.text, !title.trimmingCharacters(in: .whitespaces).isEmpty else {
-            nameField.shake()
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            return
-        }
+    // MARK: - Firestore fetch for friends and groups (corrected for id mapping)
+    private func fetchFriendsAndGroups() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        let note: String? = nil
-        guard let selectedDate = selectedDate else {
-            dateButton.shake()
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            return
-        }
-        let calendar = Calendar.current
-        let combinedDate = calendar.date(
-            bySettingHour: calendar.component(.hour, from: selectedTime),
-            minute: calendar.component(.minute, from: selectedTime),
-            second: 0,
-            of: selectedDate
-        ) ?? Date()
-        
-        let habit = Habit(
-            title: title,
-            note: note,
-            createdAt: Date(),
-            friend: selectedFriendOrGroupId ?? "",
-            schedule: combinedDate,
-            icon: selectedIcon,
-            colorHex: selectedColor.hexString,
-            days: Array(selectedDays),
-            motivation: motivationField.text,
-            remindIfMiss: remindIfMiss
-        )
-        let habitData = habit.dictionary
-        let habitId = habit.id
-        
-        saveButton.showLoading(true)
-        db.collection("users").document(uid).collection("habits").document(habitId).setData(habitData) { [weak self] error in
+        db.collection("users").document(uid).collection("friends").getDocuments { [weak self] (snapshot, error) in
             guard let self = self else { return }
-            DispatchQueue.main.async {
-                self.saveButton.showLoading(false)
-                if let error = error {
-                    let alert = UIAlertController(title: "Error", message: error.localizedDescription, preferredStyle: .alert)
-                    alert.addAction(UIAlertAction(title: "OK", style: .default))
-                    self.present(alert, animated: true)
-                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-                    return
+            self.friendsSource = snapshot?.documents.compactMap { doc in
+                let data = doc.data()
+                let id = doc.documentID
+                if let displayName = data["displayName"] as? String, !displayName.isEmpty {
+                    return (id: id, display: displayName)
                 }
-                self.delegate?.didAddHabit(habit)
-                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-                self.dismiss(animated: true)
+                if let name = data["name"] as? String, !name.isEmpty {
+                    return (id: id, display: name)
+                }
+                if let email = data["email"] as? String, !email.isEmpty {
+                    return (id: id, display: email)
+                }
+                return nil
+            } ?? []
+            self.db.collection("groups").whereField("memberUIDs", arrayContains: uid).getDocuments { [weak self] (groupSnap, error) in
+                guard let self = self else { return }
+                self.groupsSource = groupSnap?.documents.compactMap { doc in
+                    let data = doc.data()
+                    let id = doc.documentID
+                    if let name = data["name"] as? String {
+                        return (id: id, display: name)
+                    }
+                    return nil
+                } ?? []
+                DispatchQueue.main.async {
+                    self.friendPicker.reloadAllComponents()
+                }
             }
         }
-    }
-    
-
-
-    @objc private func cancelTapped() {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        dismiss(animated: true)
-    }
-    @objc private func dismissKeyboard() {
-        view.endEditing(true)
     }
 
     @objc private func showDatePickerSheet() {
@@ -575,7 +608,6 @@ class AddHabitViewController: UIViewController {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
-    // --- Modern Icon & Color Selectors ---
     @objc private func pickIcon() {
         let sheet = IconPickerSheet()
         sheet.icons = ["star.fill", "flame.fill", "book.fill", "bolt.fill", "leaf.fill", "heart.fill", "moon.fill", "sun.max.fill", "cloud.fill", "bicycle"]
@@ -658,6 +690,36 @@ extension AddHabitViewController: UITextFieldDelegate, UIPickerViewDelegate, UIP
         }
     }
 }
+
+// MARK: - Habit copyWith for editing
+private extension Habit {
+    func copyWith(
+        title: String? = nil,
+        note: String? = nil,
+        friend: String? = nil,
+        schedule: Date? = nil,
+        icon: String? = nil,
+        colorHex: String? = nil,
+        days: [Int]? = nil,
+        motivation: String? = nil,
+        remindIfMiss: Bool? = nil
+    ) -> Habit {
+        return Habit(
+            id: self.id,
+            title: title ?? self.title,
+            note: note ?? self.note,
+            createdAt: self.createdAt,
+            friend: friend ?? self.friend,
+            schedule: schedule ?? self.schedule,
+            icon: icon ?? self.icon,
+            colorHex: colorHex ?? self.colorHex,
+            days: days ?? self.days,
+            motivation: motivation ?? self.motivation,
+            remindIfMiss: remindIfMiss ?? self.remindIfMiss
+        )
+    }
+}
+
 // MARK: - Loading Animation for Button
 private extension UIButton {
     func showLoading(_ show: Bool) {
@@ -703,5 +765,21 @@ private extension UIColor {
         getRed(&r, green: &g, blue: &b, alpha: &a)
         let rgb:Int = (Int)(r*255)<<16 | (Int)(g*255)<<8 | (Int)(b*255)<<0
         return String(format:"#%06x", rgb)
+    }
+    convenience init?(hex: String) {
+        var hexSanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        hexSanitized = hexSanitized.replacingOccurrences(of: "#", with: "")
+        var rgb: UInt64 = 0
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0
+        let length = hexSanitized.count
+        guard Scanner(string: hexSanitized).scanHexInt64(&rgb) else { return nil }
+        if length == 6 {
+            r = CGFloat((rgb & 0xFF0000) >> 16) / 255.0
+            g = CGFloat((rgb & 0x00FF00) >> 8) / 255.0
+            b = CGFloat(rgb & 0x0000FF) / 255.0
+        } else {
+            return nil
+        }
+        self.init(red: r, green: g, blue: b, alpha: 1)
     }
 }

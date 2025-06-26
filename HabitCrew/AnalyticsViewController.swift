@@ -2,13 +2,9 @@ import UIKit
 import FirebaseAuth
 import FirebaseFirestore
 
-// MARK: - MAIN VIEW CONTROLLER
-
 class AnalyticsViewController: UIViewController, UITableViewDelegate, UITableViewDataSource {
     // UI Elements
     private let gradientLayer = CAGradientLayer()
-    private let decorativeBlob1 = UIView()
-    private let decorativeBlob2 = UIView()
     private let calendarHeaderContainer = UIView()
     private var calendarHeaderTop: NSLayoutConstraint!
     private var calendarHeaderHeight: NSLayoutConstraint!
@@ -25,7 +21,6 @@ class AnalyticsViewController: UIViewController, UITableViewDelegate, UITableVie
     override func viewDidLoad() {
         super.viewDidLoad()
         setupGradientBackground()
-        setupDecorativeBlobs()
         setupUI()
         fetchAndDisplayAnalytics()
     }
@@ -44,29 +39,6 @@ class AnalyticsViewController: UIViewController, UITableViewDelegate, UITableVie
         gradientLayer.endPoint = CGPoint(x: 1, y: 1)
         gradientLayer.frame = view.bounds
         view.layer.insertSublayer(gradientLayer, at: 0)
-    }
-
-    private func setupDecorativeBlobs() {
-        decorativeBlob1.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.08)
-        decorativeBlob1.layer.cornerRadius = 100
-        decorativeBlob1.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(decorativeBlob1)
-        NSLayoutConstraint.activate([
-            decorativeBlob1.widthAnchor.constraint(equalToConstant: 190),
-            decorativeBlob1.heightAnchor.constraint(equalToConstant: 190),
-            decorativeBlob1.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: -48),
-            decorativeBlob1.topAnchor.constraint(equalTo: view.topAnchor, constant: -48)
-        ])
-        decorativeBlob2.backgroundColor = UIColor.systemPurple.withAlphaComponent(0.07)
-        decorativeBlob2.layer.cornerRadius = 100
-        decorativeBlob2.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(decorativeBlob2)
-        NSLayoutConstraint.activate([
-            decorativeBlob2.widthAnchor.constraint(equalToConstant: 190),
-            decorativeBlob2.heightAnchor.constraint(equalToConstant: 190),
-            decorativeBlob2.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: 48),
-            decorativeBlob2.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: 48)
-        ])
     }
 
     private func setupUI() {
@@ -152,19 +124,27 @@ class AnalyticsViewController: UIViewController, UITableViewDelegate, UITableVie
     }
 
     // MARK: - TableView DataSource
-
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         return habits.count
     }
+    
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let habit = habits[indexPath.row]
         let cell = tableView.dequeueReusableCell(withIdentifier: "HabitCard", for: indexPath) as! AnalyticsHabitCardView
         cell.configure(with: habit)
+        cell.onDetailsTapped = { [weak self] in
+            self?.showHabitDetails(habit)
+        }
         return cell
+    }
+    
+    // Open habit details screen when tapped
+    func showHabitDetails(_ habit: AnalyticsHabit) {
+        let detailsVC = HabitAnalyticsDetailViewController(analyticsHabit: habit)
+        navigationController?.pushViewController(detailsVC, animated: true)
     }
 
     // MARK: - Data
-
     private func fetchAndDisplayAnalytics() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         Firestore.firestore().collection("users").document(uid).collection("habits")
@@ -424,13 +404,13 @@ class CalendarRowView: UIView {
 
             if calendar.isDate(date, inSameDayAs: today) {
                 label.backgroundColor = UIColor.systemRed
-                label.textColor = .white
+                label.textColor = .black  // Changed to black
             } else if !colors.isEmpty {
                 label.backgroundColor = UIColor.blend(colors: colors)
-                label.textColor = label.backgroundColor?.isDarkColor == true ? .white : .black
+                label.textColor = .black  // Always black text
             } else {
                 label.backgroundColor = UIColor.systemGray5
-                label.textColor = UIColor(white: 0.55, alpha: 1)
+                label.textColor = UIColor(white: 0.3, alpha: 1) // Darker for better contrast
             }
 
             label.isUserInteractionEnabled = true
@@ -541,7 +521,7 @@ class ElegantMonthCalendarView: UIView {
 
                 let attr: [NSAttributedString.Key: Any] = [
                     .font: UIFont.systemFont(ofSize: 22, weight: .semibold),
-                    .foregroundColor: isToday ? UIColor.white : mainRed
+                    .foregroundColor: isToday ? UIColor.black : mainRed  // Changed to black
                 ]
                 let dayStr = "\(dayNum)"
                 let size = dayStr.size(withAttributes: attr)
@@ -723,10 +703,12 @@ class HabitSheetCell: UITableViewCell {
 
 class AnalyticsHabitCardView: UITableViewCell {
     private let card = UIView()
-    private let iconView = UIImageView()
     private let titleLabel = UILabel()
     private let daysStack = UIStackView()
     private let timeLabel = UILabel()
+    private let detailsArrow = UIImageView(image: UIImage(systemName: "chevron.right"))
+    
+    var onDetailsTapped: (() -> Void)?
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -738,8 +720,6 @@ class AnalyticsHabitCardView: UITableViewCell {
     func configure(with habit: AnalyticsHabit) {
         let color = UIColor(hex: habit.colorHex) ?? .systemBlue
         card.backgroundColor = color.withAlphaComponent(0.15)
-        iconView.image = UIImage(systemName: habit.icon)?.withRenderingMode(.alwaysTemplate)
-        iconView.tintColor = color
         titleLabel.text = habit.title
 
         // Days row: always 7, round, active/inactive coloring
@@ -752,7 +732,7 @@ class AnalyticsHabitCardView: UITableViewCell {
             lbl.font = UIFont.systemFont(ofSize: 13.5, weight: .semibold)
             lbl.textAlignment = .center
             let isActive = days.contains(i)
-            lbl.textColor = isActive ? .white : UIColor(white: 0.7, alpha: 1)
+            lbl.textColor = isActive ? .black : UIColor(white: 0.5, alpha: 1) // Changed to black
             lbl.backgroundColor = isActive ? color : UIColor.systemGray5
             lbl.layer.cornerRadius = 12
             lbl.layer.masksToBounds = true
@@ -764,7 +744,7 @@ class AnalyticsHabitCardView: UITableViewCell {
         // Time label (right-aligned, monospaced)
         timeLabel.text = habit.timeString ?? ""
         timeLabel.font = UIFont.monospacedDigitSystemFont(ofSize: 15.5, weight: .medium)
-        timeLabel.textColor = color
+        timeLabel.textColor = .black // Changed to black
     }
 
     private func setup() {
@@ -775,19 +755,17 @@ class AnalyticsHabitCardView: UITableViewCell {
         card.layer.cornerRadius = 19
         card.layer.masksToBounds = true
         contentView.addSubview(card)
-        card.addSubview(iconView)
         card.addSubview(titleLabel)
         card.addSubview(daysStack)
         card.addSubview(timeLabel)
-
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-        iconView.contentMode = .scaleAspectFit
-        iconView.widthAnchor.constraint(equalToConstant: 36).isActive = true
-        iconView.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        card.addSubview(detailsArrow)
 
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
         titleLabel.textColor = .label
+        
+        detailsArrow.tintColor = .systemGray2
+        detailsArrow.translatesAutoresizingMaskIntoConstraints = false
 
         daysStack.axis = .horizontal
         daysStack.spacing = 5
@@ -804,14 +782,14 @@ class AnalyticsHabitCardView: UITableViewCell {
             card.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 10),
             card.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -10),
 
-            iconView.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
-            iconView.centerYAnchor.constraint(equalTo: card.centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 36),
-            iconView.heightAnchor.constraint(equalToConstant: 36),
-
-            titleLabel.topAnchor.constraint(equalTo: card.topAnchor, constant: 16),
-            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 14),
-            titleLabel.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
+            titleLabel.topAnchor.constraint(equalTo: card.topAnchor, constant: 14),
+            titleLabel.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: detailsArrow.leadingAnchor, constant: -10),
+            
+            detailsArrow.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            detailsArrow.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
+            detailsArrow.widthAnchor.constraint(equalToConstant: 20),
+            detailsArrow.heightAnchor.constraint(equalToConstant: 20),
 
             daysStack.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
             daysStack.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
@@ -821,6 +799,15 @@ class AnalyticsHabitCardView: UITableViewCell {
             timeLabel.leadingAnchor.constraint(greaterThanOrEqualTo: daysStack.trailingAnchor, constant: 14),
             timeLabel.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
         ])
+        
+        // Make the card tappable for details
+        let tap = UITapGestureRecognizer(target: self, action: #selector(cardTapped))
+        card.addGestureRecognizer(tap)
+        card.isUserInteractionEnabled = true
+    }
+    
+    @objc private func cardTapped() {
+        onDetailsTapped?()
     }
 }
 
@@ -893,8 +880,4 @@ private extension UIColor {
         getRed(&r, green: &g, blue: &b, alpha: &a)
         return UIColor(red: max(0, r-0.18), green: max(0, g-0.18), blue: max(0, b-0.18), alpha: a)
     }
-}
-
-#Preview(){
-    AnalyticsViewController()
 }

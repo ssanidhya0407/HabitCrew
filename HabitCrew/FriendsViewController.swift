@@ -18,8 +18,6 @@ class FriendsViewController: UIViewController {
 
     // UI
     private let gradientLayer = CAGradientLayer()
-    private let decorativeBlob1 = UIView()
-    private let decorativeBlob2 = UIView()
     private let greetingLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: 32, weight: .bold)
@@ -29,6 +27,24 @@ class FriendsViewController: UIViewController {
         label.text = "Friends"
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
+    }()
+    private let addFriendButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "person.badge.plus"), for: .normal)
+        button.tintColor = .systemBlue
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.contentHorizontalAlignment = .fill
+        button.contentVerticalAlignment = .fill
+        return button
+    }()
+    private let createGroupButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "person.3.fill"), for: .normal)
+        button.tintColor = .systemGreen
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.contentHorizontalAlignment = .fill
+        button.contentVerticalAlignment = .fill
+        return button
     }()
     private let subtitleLabel: UILabel = {
         let label = UILabel()
@@ -66,43 +82,12 @@ class FriendsViewController: UIViewController {
         table.rowHeight = 78
         return table
     }()
-    private let addFriendButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Add Friend", for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 20, weight: .bold)
-        button.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.16)
-        button.setTitleColor(.systemBlue, for: .normal)
-        button.layer.cornerRadius = 16
-        button.layer.cornerCurve = .continuous
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.layer.shadowColor = UIColor.systemBlue.withAlphaComponent(0.10).cgColor
-        button.layer.shadowOpacity = 1.0
-        button.layer.shadowRadius = 12
-        button.layer.shadowOffset = CGSize(width: 0, height: 4)
-        return button
-    }()
-    private let createGroupButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Create Group", for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 20, weight: .bold)
-        button.backgroundColor = UIColor.systemGreen.withAlphaComponent(0.17)
-        button.setTitleColor(.systemGreen, for: .normal)
-        button.layer.cornerRadius = 16
-        button.layer.cornerCurve = .continuous
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.layer.shadowColor = UIColor.systemGreen.withAlphaComponent(0.10).cgColor
-        button.layer.shadowOpacity = 1.0
-        button.layer.shadowRadius = 12
-        button.layer.shadowOffset = CGSize(width: 0, height: 4)
-        return button
-    }()
     private var searchModal: FriendSearchModal?
     private var groupModal: GroupCreateModal?
 
     override func viewDidLoad() {
         super.viewDidLoad()
         setupGradientBackground()
-        setupDecorativeBlobs()
         setupUI()
         requestLocalNotificationPermission()
         fetchUserProfile()
@@ -118,6 +103,7 @@ class FriendsViewController: UIViewController {
     }
 
     private func setupGradientBackground() {
+        // No blobs, just gradient
         gradientLayer.colors = [
             UIColor(red: 0.94, green: 0.97, blue: 1.0, alpha: 1).cgColor,
             UIColor(red: 0.97, green: 0.94, blue: 1.0, alpha: 1).cgColor,
@@ -127,53 +113,31 @@ class FriendsViewController: UIViewController {
         gradientLayer.frame = view.bounds
         view.layer.insertSublayer(gradientLayer, at: 0)
     }
-
-    private func setupDecorativeBlobs() {
-        decorativeBlob1.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.08)
-        decorativeBlob1.layer.cornerRadius = 100
-        decorativeBlob1.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(decorativeBlob1)
-        NSLayoutConstraint.activate([
-            decorativeBlob1.widthAnchor.constraint(equalToConstant: 190),
-            decorativeBlob1.heightAnchor.constraint(equalToConstant: 190),
-            decorativeBlob1.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: -48),
-            decorativeBlob1.topAnchor.constraint(equalTo: view.topAnchor, constant: -48)
-        ])
-        decorativeBlob2.backgroundColor = UIColor.systemPurple.withAlphaComponent(0.07)
-        decorativeBlob2.layer.cornerRadius = 100
-        decorativeBlob2.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(decorativeBlob2)
-        NSLayoutConstraint.activate([
-            decorativeBlob2.widthAnchor.constraint(equalToConstant: 190),
-            decorativeBlob2.heightAnchor.constraint(equalToConstant: 190),
-            decorativeBlob2.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: 48),
-            decorativeBlob2.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: 48)
-        ])
-    }
-
+    
     private func setupUI() {
         view.addSubview(greetingLabel)
+        view.addSubview(addFriendButton)
+        view.addSubview(createGroupButton)
         view.addSubview(subtitleLabel)
+
         NSLayoutConstraint.activate([
             greetingLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 0),
             greetingLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 30),
-            greetingLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -25),
+            greetingLabel.trailingAnchor.constraint(lessThanOrEqualTo: addFriendButton.leadingAnchor, constant: -18),
+            addFriendButton.centerYAnchor.constraint(equalTo: greetingLabel.centerYAnchor),
+            addFriendButton.trailingAnchor.constraint(equalTo: createGroupButton.leadingAnchor, constant: -12),
+            addFriendButton.widthAnchor.constraint(equalToConstant: 30),
+            addFriendButton.heightAnchor.constraint(equalToConstant: 30),
+
+            createGroupButton.centerYAnchor.constraint(equalTo: greetingLabel.centerYAnchor),
+            createGroupButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -26),
+            createGroupButton.widthAnchor.constraint(equalToConstant: 30),
+            createGroupButton.heightAnchor.constraint(equalToConstant: 30)
+        ])
+        NSLayoutConstraint.activate([
             subtitleLabel.topAnchor.constraint(equalTo: greetingLabel.bottomAnchor, constant: 4),
             subtitleLabel.leadingAnchor.constraint(equalTo: greetingLabel.leadingAnchor),
-            subtitleLabel.trailingAnchor.constraint(equalTo: greetingLabel.trailingAnchor),
-        ])
-        view.addSubview(addFriendButton)
-        view.addSubview(createGroupButton)
-        NSLayoutConstraint.activate([
-            createGroupButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
-            createGroupButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28),
-            createGroupButton.bottomAnchor.constraint(equalTo: addFriendButton.topAnchor, constant: -10),
-            createGroupButton.heightAnchor.constraint(equalToConstant: 56),
-
-            addFriendButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
-            addFriendButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28),
-            addFriendButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -18),
-            addFriendButton.heightAnchor.constraint(equalToConstant: 56)
+            subtitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -25),
         ])
         addFriendButton.addTarget(self, action: #selector(addFriendTapped), for: .touchUpInside)
         createGroupButton.addTarget(self, action: #selector(createGroupTapped), for: .touchUpInside)
@@ -184,7 +148,7 @@ class FriendsViewController: UIViewController {
             cardView.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 16),
             cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-            cardView.bottomAnchor.constraint(equalTo: createGroupButton.topAnchor, constant: -18)
+            cardView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8)
         ])
         NSLayoutConstraint.activate([
             blurView.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
@@ -404,6 +368,12 @@ class FriendsViewController: UIViewController {
                 let alert = UIAlertController(title: "Check-in Sent!", message: "A check-in was sent to \(user.displayName).", preferredStyle: .alert)
                 alert.addAction(UIAlertAction(title: "OK", style: .default))
                 modal?.present(alert, animated: true)
+            },
+            onShowAnalytics: { [weak self] in
+                // New handler for the analytics button
+                guard let self = self else { return }
+                let analyticsVC = FriendAnalyticsViewController(friend: user)
+                self.navigationController?.pushViewController(analyticsVC, animated: true)
             }
         )
         present(modal!, animated: true)
@@ -418,6 +388,7 @@ class FriendsViewController: UIViewController {
 }
 
 // MARK: - TableView DataSource/Delegate
+
 
 extension FriendsViewController: UITableViewDataSource, UITableViewDelegate {
     func numberOfSections(in tableView: UITableView) -> Int {
@@ -444,8 +415,14 @@ extension FriendsViewController: UITableViewDataSource, UITableViewDelegate {
             let group = groups[indexPath.row]
             let cell = tableView.dequeueReusableCell(withIdentifier: "groupcard", for: indexPath) as! GroupCardCell
             cell.configure(with: group)
+            cell.onGroupTap = { [weak self] in
+                guard let self = self, let myProfile = self.userProfile else { return }
+                let groupChatVC = GroupChatViewController(group: group, me: myProfile)
+                self.present(groupChatVC, animated: true)
+            }
             return cell
         }
+        
         let isRequestSection = (!groups.isEmpty && !incomingRequests.isEmpty && indexPath.section == 1)
             || (groups.isEmpty && !incomingRequests.isEmpty && indexPath.section == 0)
         let user = isRequestSection ? incomingRequests[indexPath.row] : friends[indexPath.row]
@@ -453,6 +430,11 @@ extension FriendsViewController: UITableViewDataSource, UITableViewDelegate {
         cell.configure(with: user, isRequest: isRequestSection)
         cell.onProfileTap = { [weak self] in self?.showProfile(of: user) }
         cell.onMessageTap = { [weak self] in self?.showChat(with: user) }
+        cell.onChevronTap = { [weak self] in
+            guard let self = self else { return }
+            let analyticsVC = FriendAnalyticsViewController(friend: user)
+            self.navigationController?.pushViewController(analyticsVC, animated: true)
+        }
         cell.onNudgeTap = { [weak self, weak cell] in
             cell?.blink(color: UIColor.systemYellow.withAlphaComponent(0.34))
             cell?.layer.borderColor = UIColor.systemYellow.cgColor
@@ -481,19 +463,22 @@ extension FriendsViewController: UITableViewDataSource, UITableViewDelegate {
 // MARK: - TableView DataSource/Delegate
 
 // MARK: - Profile Modal (inner class)
+// MARK: - Updated Profile Modal (inner class)
 class ProfileModal: UIViewController {
     let user: UserProfile
     let canMessage: Bool
     let onMessage: (() -> Void)?
     let onNudge: (() -> Void)?
     let onCheckin: (() -> Void)?
+    let onShowAnalytics: (() -> Void)?  // New callback for analytics
 
-    init(user: UserProfile, canMessage: Bool, onMessage: (() -> Void)?, onNudge: (() -> Void)?, onCheckin: (() -> Void)?) {
+    init(user: UserProfile, canMessage: Bool, onMessage: (() -> Void)?, onNudge: (() -> Void)?, onCheckin: (() -> Void)?, onShowAnalytics: (() -> Void)? = nil) {
         self.user = user
         self.canMessage = canMessage
         self.onMessage = onMessage
         self.onNudge = onNudge
         self.onCheckin = onCheckin
+        self.onShowAnalytics = onShowAnalytics
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .formSheet
     }
@@ -567,8 +552,19 @@ class ProfileModal: UIViewController {
             checkinBtn.addAction(UIAction { _ in
                 checkinBtn.confettiBurst()
             }, for: .touchUpInside)
+            
+            // New analytics button
+            let analyticsBtn = CircleActionButton(
+                icon: UIImage(systemName: "chart.bar.fill"),
+                bgColor: UIColor.systemPurple.withAlphaComponent(0.14),
+                borderColor: .systemPurple,
+                borderWidth: 2,
+                iconColor: .systemPurple
+            )
+            analyticsBtn.accessibilityLabel = "Analytics"
+            analyticsBtn.addTarget(self, action: #selector(analyticsTapped), for: .touchUpInside)
 
-            let hstack = UIStackView(arrangedSubviews: [nudgeBtn, msgBtn, checkinBtn])
+            let hstack = UIStackView(arrangedSubviews: [nudgeBtn, msgBtn, checkinBtn, analyticsBtn])
             hstack.axis = .horizontal
             hstack.spacing = 20
             hstack.distribution = .equalCentering
@@ -580,14 +576,39 @@ class ProfileModal: UIViewController {
                 nudgeBtn.widthAnchor.constraint(equalToConstant: 56),
                 nudgeBtn.heightAnchor.constraint(equalTo: nudgeBtn.widthAnchor),
                 checkinBtn.widthAnchor.constraint(equalToConstant: 56),
-                checkinBtn.heightAnchor.constraint(equalTo: checkinBtn.widthAnchor)
+                checkinBtn.heightAnchor.constraint(equalTo: checkinBtn.widthAnchor),
+                analyticsBtn.widthAnchor.constraint(equalToConstant: 56),
+                analyticsBtn.heightAnchor.constraint(equalTo: analyticsBtn.widthAnchor)
             ])
         }
+        
+        // Close button
+        let closeButton = UIButton(type: .system)
+        closeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
+        closeButton.tintColor = .tertiaryLabel
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        closeButton.addTarget(self, action: #selector(dismissModal), for: .touchUpInside)
+        view.addSubview(closeButton)
+        
+        NSLayoutConstraint.activate([
+            closeButton.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
+            closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            closeButton.widthAnchor.constraint(equalToConstant: 32),
+            closeButton.heightAnchor.constraint(equalToConstant: 32)
+        ])
     }
 
     @objc private func msgTapped() { onMessage?() }
     @objc private func nudgeTapped() { onNudge?() }
     @objc private func checkinTapped() { onCheckin?() }
+    @objc private func analyticsTapped() {
+        dismiss(animated: true) { [weak self] in
+            self?.onShowAnalytics?()
+        }
+    }
+    @objc private func dismissModal() {
+        dismiss(animated: true)
+    }
 }
 
 // MARK: - CircleActionButton
@@ -712,12 +733,14 @@ class CircleAvatarView: UIView {
 
 
 // MARK: - GroupCardCell
-
 class GroupCardCell: UITableViewCell {
     private let card = UIView()
     private let groupImageView = UIImageView()
     private let nameLabel = UILabel()
     private let descriptionLabel = UILabel()
+    private let chevronImageView = UIImageView()
+    
+    var onGroupTap: (() -> Void)?
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -751,16 +774,24 @@ class GroupCardCell: UITableViewCell {
         groupImageView.contentMode = .scaleAspectFill
         groupImageView.layer.cornerRadius = 24
         groupImageView.layer.masksToBounds = true
+        groupImageView.tintColor = .systemGreen
+        
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         nameLabel.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
+        
         descriptionLabel.translatesAutoresizingMaskIntoConstraints = false
         descriptionLabel.font = UIFont.systemFont(ofSize: 14, weight: .regular)
         descriptionLabel.textColor = .secondaryLabel
         descriptionLabel.numberOfLines = 2
+        
+        chevronImageView.image = UIImage(systemName: "chevron.right")
+        chevronImageView.tintColor = .systemGray3
+        chevronImageView.translatesAutoresizingMaskIntoConstraints = false
 
         card.addSubview(groupImageView)
         card.addSubview(nameLabel)
         card.addSubview(descriptionLabel)
+        card.addSubview(chevronImageView)
 
         NSLayoutConstraint.activate([
             card.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 6),
@@ -775,13 +806,27 @@ class GroupCardCell: UITableViewCell {
 
             nameLabel.leadingAnchor.constraint(equalTo: groupImageView.trailingAnchor, constant: 16),
             nameLabel.topAnchor.constraint(equalTo: card.topAnchor, constant: 18),
-            nameLabel.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: chevronImageView.leadingAnchor, constant: -8),
 
             descriptionLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
             descriptionLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
-            descriptionLabel.trailingAnchor.constraint(equalTo: nameLabel.trailingAnchor),
-            descriptionLabel.bottomAnchor.constraint(lessThanOrEqualTo: card.bottomAnchor, constant: -12)
+            descriptionLabel.trailingAnchor.constraint(lessThanOrEqualTo: chevronImageView.leadingAnchor, constant: -8),
+            descriptionLabel.bottomAnchor.constraint(lessThanOrEqualTo: card.bottomAnchor, constant: -12),
+            
+            chevronImageView.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
+            chevronImageView.centerYAnchor.constraint(equalTo: card.centerYAnchor),
+            chevronImageView.widthAnchor.constraint(equalToConstant: 20),
+            chevronImageView.heightAnchor.constraint(equalToConstant: 20)
         ])
+        
+        // Add tap gesture
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(cardTapped))
+        card.addGestureRecognizer(tapGesture)
+        card.isUserInteractionEnabled = true
+    }
+    
+    @objc private func cardTapped() {
+        onGroupTap?()
     }
 }
 
@@ -795,11 +840,14 @@ class FriendCardCell: UITableViewCell {
     let checkinButton = UIButton(type: .system)
     let messageButton = UIButton(type: .system)
     let acceptButton = UIButton(type: .system)
+    let chevronButton = UIButton(type: .system)
+    
     var onMessageTap: (() -> Void)?
     var onNudgeTap: (() -> Void)?
     var onCheckinTap: (() -> Void)?
     var onProfileTap: (() -> Void)?
     var onAcceptTap: (() -> Void)?
+    var onChevronTap: (() -> Void)?
     private var isRequestCell = false
 
     // Keep track of default border colors
@@ -823,12 +871,14 @@ class FriendCardCell: UITableViewCell {
             nudgeButton.isHidden = true
             checkinButton.isHidden = true
             messageButton.isHidden = true
+            chevronButton.isHidden = true
         } else {
             // Show 3 circular icons, hide Accept.
             acceptButton.isHidden = true
             nudgeButton.isHidden = false
             checkinButton.isHidden = false
             messageButton.isHidden = false
+            chevronButton.isHidden = false
             // Restore default border colors
             nudgeButton.layer.borderColor = nudgeBorderColor
             checkinButton.layer.borderColor = checkinBorderColor
@@ -848,6 +898,12 @@ class FriendCardCell: UITableViewCell {
         avatar.translatesAutoresizingMaskIntoConstraints = false
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        // Chevron Button (right arrow)
+        chevronButton.setImage(UIImage(systemName: "chevron.right"), for: .normal)
+        chevronButton.tintColor = .systemGray2
+        chevronButton.translatesAutoresizingMaskIntoConstraints = false
+        chevronButton.addTarget(self, action: #selector(chevronTapped), for: .touchUpInside)
+        
         // Nudge Button (circle icon)
         nudgeButton.backgroundColor = UIColor.systemYellow.withAlphaComponent(0.19)
         nudgeButton.layer.cornerRadius = 24
@@ -906,6 +962,7 @@ class FriendCardCell: UITableViewCell {
 
         card.addSubview(avatar)
         card.addSubview(nameLabel)
+        card.addSubview(chevronButton)
         card.addSubview(acceptButton)
 
         let buttonStack = UIStackView(arrangedSubviews: [nudgeButton, checkinButton, messageButton])
@@ -927,6 +984,11 @@ class FriendCardCell: UITableViewCell {
 
             nameLabel.leadingAnchor.constraint(equalTo: avatar.trailingAnchor, constant: 16),
             nameLabel.centerYAnchor.constraint(equalTo: card.centerYAnchor),
+            
+            chevronButton.leadingAnchor.constraint(equalTo: nameLabel.trailingAnchor, constant: 6),
+            chevronButton.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
+            chevronButton.widthAnchor.constraint(equalToConstant: 24),
+            chevronButton.heightAnchor.constraint(equalToConstant: 24),
 
             buttonStack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
             buttonStack.centerYAnchor.constraint(equalTo: card.centerYAnchor),
@@ -947,6 +1009,7 @@ class FriendCardCell: UITableViewCell {
     @objc private func checkinTapped() { onCheckinTap?() }
     @objc private func profileTapped() { onProfileTap?() }
     @objc private func acceptTapped() { onAcceptTap?() }
+    @objc private func chevronTapped() { onChevronTap?() }
 
     /// Blinks the card and highlights the corresponding button border
     func blinkButtonBorder(for type: ActionType) {
