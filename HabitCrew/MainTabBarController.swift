@@ -22,17 +22,12 @@ class MainTabBarController: UITabBarController {
         let analyticsNav = UINavigationController(rootViewController: analyticsVC)
         analyticsNav.tabBarItem = UITabBarItem(title: "Progress", image: UIImage(systemName: "chart.bar.xaxis"), selectedImage: UIImage(systemName: "chart.bar.xaxis"))
 
-        // Profile
-        let profileVC = ProfileViewController()
-        let profileNav = UINavigationController(rootViewController: profileVC)
-        profileNav.tabBarItem = UITabBarItem(title: "Profile", image: UIImage(systemName: "person.crop.circle"), selectedImage: UIImage(systemName: "person.crop.circle.fill"))
-
         // Friends
         let friendsVC = FriendsViewController()
         let friendsNav = UINavigationController(rootViewController: friendsVC)
         friendsNav.tabBarItem = UITabBarItem(title: "Friends", image: UIImage(systemName: "person.2"), selectedImage: UIImage(systemName: "person.2.fill"))
 
-        viewControllers = [habitsNav, analyticsNav, friendsNav, profileNav]
+        viewControllers = [habitsNav, analyticsNav, friendsNav]
         tabBar.tintColor = .systemBlue
         tabBar.backgroundColor = .systemBackground
         tabBar.isTranslucent = true

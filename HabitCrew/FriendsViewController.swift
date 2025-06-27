@@ -16,6 +16,13 @@ class FriendsViewController: UIViewController {
     private var requestsListener: ListenerRegistration?
     private var groupsListener: ListenerRegistration?
 
+    
+    
+    var onViewProfileTapped: (() -> Void)?
+    var onMessageTapped: (() -> Void)?
+    var onNudgeTapped: (() -> Void)?
+    
+    
     // UI
     private let gradientLayer = CAGradientLayer()
     private let greetingLabel: UILabel = {
@@ -28,24 +35,19 @@ class FriendsViewController: UIViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
+    
     private let addFriendButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "person.badge.plus"), for: .normal)
-        button.tintColor = .systemBlue
+        button.setTitle("Add Friends +", for: .normal)
+        button.setTitleColor(.systemBlue, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        button.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.1)
+        button.layer.cornerRadius = 16
         button.translatesAutoresizingMaskIntoConstraints = false
-        button.contentHorizontalAlignment = .fill
-        button.contentVerticalAlignment = .fill
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
         return button
     }()
-    private let createGroupButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "person.3.fill"), for: .normal)
-        button.tintColor = .systemGreen
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.contentHorizontalAlignment = .fill
-        button.contentVerticalAlignment = .fill
-        return button
-    }()
+    
     private let subtitleLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: 18, weight: .medium)
@@ -117,30 +119,26 @@ class FriendsViewController: UIViewController {
     private func setupUI() {
         view.addSubview(greetingLabel)
         view.addSubview(addFriendButton)
-        view.addSubview(createGroupButton)
         view.addSubview(subtitleLabel)
 
         NSLayoutConstraint.activate([
-            greetingLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 0),
-            greetingLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 30),
-            greetingLabel.trailingAnchor.constraint(lessThanOrEqualTo: addFriendButton.leadingAnchor, constant: -18),
-            addFriendButton.centerYAnchor.constraint(equalTo: greetingLabel.centerYAnchor),
-            addFriendButton.trailingAnchor.constraint(equalTo: createGroupButton.leadingAnchor, constant: -12),
-            addFriendButton.widthAnchor.constraint(equalToConstant: 30),
-            addFriendButton.heightAnchor.constraint(equalToConstant: 30),
-
-            createGroupButton.centerYAnchor.constraint(equalTo: greetingLabel.centerYAnchor),
-            createGroupButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -26),
-            createGroupButton.widthAnchor.constraint(equalToConstant: 30),
-            createGroupButton.heightAnchor.constraint(equalToConstant: 30)
-        ])
+             greetingLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 0),
+             greetingLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 30),
+             // Modified constraint to give more space to the wider button
+             greetingLabel.trailingAnchor.constraint(lessThanOrEqualTo: addFriendButton.leadingAnchor, constant: -12),
+             
+             // Updated constraints for the new button style
+             addFriendButton.centerYAnchor.constraint(equalTo: greetingLabel.centerYAnchor),
+             addFriendButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -26),
+             // Remove the fixed width/height constraints
+         ])
+        
         NSLayoutConstraint.activate([
             subtitleLabel.topAnchor.constraint(equalTo: greetingLabel.bottomAnchor, constant: 4),
             subtitleLabel.leadingAnchor.constraint(equalTo: greetingLabel.leadingAnchor),
             subtitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -25),
         ])
         addFriendButton.addTarget(self, action: #selector(addFriendTapped), for: .touchUpInside)
-        createGroupButton.addTarget(self, action: #selector(createGroupTapped), for: .touchUpInside)
 
         view.addSubview(cardView)
         cardView.addSubview(blurView)
@@ -277,26 +275,6 @@ class FriendsViewController: UIViewController {
         searchModal = modal
     }
 
-    @objc private func createGroupTapped() {
-        guard let me = userProfile else { return }
-        let modal = GroupCreateModal(me: me, friends: friends)
-        modal.onGroupCreate = { [weak self] group in
-            self?.addGroupToFirestore(group)
-        }
-        present(modal, animated: true)
-        groupModal = modal
-    }
-
-    private func addGroupToFirestore(_ group: Group) {
-        let groupDoc = db.collection("groups").document(group.id)
-        groupDoc.setData(group.dictionary)
-        for uid in group.memberUIDs {
-            db.collection("users").document(uid).collection("groups").document(group.id).setData([
-                "id": group.id,
-                "joinedAt": FieldValue.serverTimestamp()
-            ])
-        }
-    }
 
     private func sendFriendRequest(to user: UserProfile) {
         guard let myProfile = userProfile else { return }
@@ -320,63 +298,9 @@ class FriendsViewController: UIViewController {
 
     // MARK: - Profile Modal Integration
     private func showProfile(of user: UserProfile) {
-        let canMsg = friends.contains(where: { $0.uid == user.uid })
-        var modal: ProfileModal? = nil
-        modal = ProfileModal(
-            user: user,
-            canMessage: canMsg,
-            onMessage: { [weak self] in
-                self?.showChat(with: user)
-            },
-            onNudge: { [weak self, weak modal] in
-                guard let self = self, let me = self.userProfile else { return }
-                let nudgeMsg = HabitMessage(
-                    id: UUID().uuidString,
-                    senderId: me.uid,
-                    timestamp: Date(),
-                    type: .nudge,
-                    content: "👋 \(me.displayName) nudged you!",
-                    audioURL: nil,
-                    checkinData: nil,
-                    summaryData: nil,
-                    pollData: nil,
-                    reactions: nil
-                )
-                let chatVC = ChatViewController(friend: user, me: me)
-                chatVC.sendMessage(nudgeMsg)
-                let alert = UIAlertController(title: "Nudge Sent!", message: "A nudge was sent to \(user.displayName).", preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: "OK", style: .default))
-                modal?.present(alert, animated: true)
-            },
-            onCheckin: { [weak self, weak modal] in
-                guard let self = self, let me = self.userProfile else { return }
-                let checkinData = CheckinData(habitName: "Daily Habit", date: Date(), status: "pending", note: nil)
-                let checkinMsg = HabitMessage(
-                    id: UUID().uuidString,
-                    senderId: me.uid,
-                    timestamp: Date(),
-                    type: .checkin,
-                    content: "Check-in time!",
-                    audioURL: nil,
-                    checkinData: checkinData,
-                    summaryData: nil,
-                    pollData: nil,
-                    reactions: nil
-                )
-                let chatVC = ChatViewController(friend: user, me: me)
-                chatVC.sendMessage(checkinMsg)
-                let alert = UIAlertController(title: "Check-in Sent!", message: "A check-in was sent to \(user.displayName).", preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: "OK", style: .default))
-                modal?.present(alert, animated: true)
-            },
-            onShowAnalytics: { [weak self] in
-                // New handler for the analytics button
-                guard let self = self else { return }
-                let analyticsVC = FriendAnalyticsViewController(friend: user)
-                self.navigationController?.pushViewController(analyticsVC, animated: true)
-            }
-        )
-        present(modal!, animated: true)
+        // Create the new ProfileViewController for the friend
+        let friendProfileVC = ProfileViewController(friend: user)
+        navigationController?.pushViewController(friendProfileVC, animated: true)
     }
 
     private func showChat(with user: UserProfile) {
@@ -392,48 +316,35 @@ class FriendsViewController: UIViewController {
 
 extension FriendsViewController: UITableViewDataSource, UITableViewDelegate {
     func numberOfSections(in tableView: UITableView) -> Int {
-        if !groups.isEmpty { return incomingRequests.isEmpty ? 2 : 3 }
+        // Always return 1 or 2 sections, never show groups section
         return incomingRequests.isEmpty ? 1 : 2
     }
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        if !groups.isEmpty && section == 0 { return groups.count }
-        if (!groups.isEmpty && !incomingRequests.isEmpty && section == 1) || (groups.isEmpty && !incomingRequests.isEmpty && section == 0) {
+        // Only handle friend requests and friends sections
+        if !incomingRequests.isEmpty && section == 0 {
             return incomingRequests.count
         }
         return friends.count
     }
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        if !groups.isEmpty && section == 0 { return "Groups" }
-        if (!groups.isEmpty && !incomingRequests.isEmpty && section == 1) || (groups.isEmpty && !incomingRequests.isEmpty && section == 0) {
+        if !incomingRequests.isEmpty && section == 0 {
             return "Friend Requests"
         }
         return "Your Friends"
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        if !groups.isEmpty && indexPath.section == 0 {
-            let group = groups[indexPath.row]
-            let cell = tableView.dequeueReusableCell(withIdentifier: "groupcard", for: indexPath) as! GroupCardCell
-            cell.configure(with: group)
-            cell.onGroupTap = { [weak self] in
-                guard let self = self, let myProfile = self.userProfile else { return }
-                let groupChatVC = GroupChatViewController(group: group, me: myProfile)
-                self.present(groupChatVC, animated: true)
-            }
-            return cell
-        }
-        
-        let isRequestSection = (!groups.isEmpty && !incomingRequests.isEmpty && indexPath.section == 1)
-            || (groups.isEmpty && !incomingRequests.isEmpty && indexPath.section == 0)
+        let isRequestSection = !incomingRequests.isEmpty && indexPath.section == 0
         let user = isRequestSection ? incomingRequests[indexPath.row] : friends[indexPath.row]
         let cell = tableView.dequeueReusableCell(withIdentifier: "friendcard", for: indexPath) as! FriendCardCell
         cell.configure(with: user, isRequest: isRequestSection)
-        cell.onProfileTap = { [weak self] in self?.showProfile(of: user) }
+        cell.onProfileTap = { [weak self] in
+            self?.showProfile(of: user)
+        }
         cell.onMessageTap = { [weak self] in self?.showChat(with: user) }
         cell.onChevronTap = { [weak self] in
-            guard let self = self else { return }
-            let analyticsVC = FriendAnalyticsViewController(friend: user)
-            self.navigationController?.pushViewController(analyticsVC, animated: true)
+            // Use the ProfileViewController directly now
+            self?.showProfile(of: user)
         }
         cell.onNudgeTap = { [weak self, weak cell] in
             cell?.blink(color: UIColor.systemYellow.withAlphaComponent(0.34))
@@ -904,6 +815,11 @@ class FriendCardCell: UITableViewCell {
         chevronButton.translatesAutoresizingMaskIntoConstraints = false
         chevronButton.addTarget(self, action: #selector(chevronTapped), for: .touchUpInside)
         
+        
+        let cardTap = UITapGestureRecognizer(target: self, action: #selector(profileTapped))
+        card.addGestureRecognizer(cardTap)
+        card.isUserInteractionEnabled = true
+        
         // Nudge Button (circle icon)
         nudgeButton.backgroundColor = UIColor.systemYellow.withAlphaComponent(0.19)
         nudgeButton.layer.cornerRadius = 24
@@ -1010,6 +926,9 @@ class FriendCardCell: UITableViewCell {
     @objc private func profileTapped() { onProfileTap?() }
     @objc private func acceptTapped() { onAcceptTap?() }
     @objc private func chevronTapped() { onChevronTap?() }
+    
+
+    
 
     /// Blinks the card and highlights the corresponding button border
     func blinkButtonBorder(for type: ActionType) {

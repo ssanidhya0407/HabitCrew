@@ -3,6 +3,7 @@ import FirebaseAuth
 import FirebaseFirestore
 import FirebaseStorage
 import PhotosUI
+import ObjectiveC
 
 class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     
@@ -15,9 +16,8 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
     private var habitsCount: Int = 0
     private var completionRate: Float = 0
     private var currentStreak: Int = 0
-    
-    private var friendsCountLabel: UILabel?
-    private var groupsCountLabel: UILabel?
+    private var isViewingFriend: Bool = false
+    private var sharedHabits: [Habit] = []
     
     // UI Elements
     private let scrollView = UIScrollView()
@@ -38,6 +38,8 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
     // Friends Card
     private let friendsCardContainer = UIView()
     private let friendsCardBlurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialLight))
+    private var friendsCountLabel: UILabel?
+    private var groupsCountLabel: UILabel?
     
     // Achievements Card
     private let achievementsCardContainer = UIView()
@@ -51,6 +53,9 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
     private let aboutCardContainer = UIView()
     private let aboutCardBlurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialLight))
     
+    // Shared Habits Card (for friend profiles)
+    private var sharedHabitsCardContainer: UIView?
+    
     // Date formatter for handling date strings
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -58,14 +63,56 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
         return formatter
     }()
     
+    // MARK: - Initializers
+    override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
+        super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
+        self.isViewingFriend = false
+    }
+    
+    convenience init(friend: UserProfile) {
+        self.init(nibName: nil, bundle: nil)
+        self.userProfile = friend
+        self.isViewingFriend = true
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
     // MARK: - Lifecycle Methods
     override func viewDidLoad() {
         super.viewDidLoad()
         setupGradientBackground()
         setupScrollView()
         setupUI()
-        fetchUserProfile()
-        fetchUserStats()
+        
+        if isViewingFriend {
+            // We already have the friend's profile data
+            updateProfileUI()
+            
+            // Fetch shared habits with this friend
+            if let friendId = userProfile?.uid {
+                fetchSharedHabitsWithFriend(friendId)
+            }
+        } else {
+            // Regular profile flow for the current user
+            fetchUserProfile()
+            fetchUserStats()
+        }
+        
+        // Print the current user ID for debugging
+        if let uid = Auth.auth().currentUser?.uid {
+            print("Current user ID: \(uid)")
+        } else {
+            print("No user is currently signed in")
+        }
+    }
+    
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if !isViewingFriend {
+            checkForFriendsData()
+        }
     }
     
     override func viewDidLayoutSubviews() {
@@ -107,22 +154,38 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
     }
     
     private func setupUI() {
-        // Add navigation back button
-        navigationItem.title = "Profile"
+        // Navigation title
+        if isViewingFriend {
+            title = "Friend Profile"
+        } else {
+            title = "Profile"
+        }
         navigationItem.largeTitleDisplayMode = .never
         
         // Setup all the card containers
         setupProfileHeader()
         setupStatsCard()
-        setupFriendsCard()
-        setupAchievementsCard()
-        setupSettingsCard()
-        setupAboutCard()
+        
+        if isViewingFriend {
+            // For friend profiles, show different cards
+            setupFriendsCard()
+            // We'll add the shared habits card dynamically after fetching habits
+        } else {
+            // For current user profile
+            setupFriendsCard()
+            setupAchievementsCard()
+            setupSettingsCard()
+            setupAboutCard()
+        }
         
         // Set content view's bottom constraint to the bottom of the last card
-        NSLayoutConstraint.activate([
-            contentView.bottomAnchor.constraint(equalTo: aboutCardContainer.bottomAnchor, constant: 40)
-        ])
+        if isViewingFriend {
+            // Will be set after fetching shared habits
+        } else {
+            NSLayoutConstraint.activate([
+                contentView.bottomAnchor.constraint(equalTo: aboutCardContainer.bottomAnchor, constant: 40)
+            ])
+        }
     }
     
     private func setupProfileHeader() {
@@ -152,11 +215,20 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
         
         // Edit Profile Button
         editProfileButton.translatesAutoresizingMaskIntoConstraints = false
-        editProfileButton.setTitle("Edit Profile", for: .normal)
-        editProfileButton.setTitleColor(.systemBlue, for: .normal)
-        editProfileButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.1)
+        
+        if isViewingFriend {
+            editProfileButton.setTitle("Message", for: .normal)
+            editProfileButton.setTitleColor(.systemBlue, for: .normal)
+            editProfileButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.1)
+            editProfileButton.addTarget(self, action: #selector(messageFriendTapped), for: .touchUpInside)
+        } else {
+            editProfileButton.setTitle("Edit Profile", for: .normal)
+            editProfileButton.setTitleColor(.systemBlue, for: .normal)
+            editProfileButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.1)
+            editProfileButton.addTarget(self, action: #selector(editProfileTapped), for: .touchUpInside)
+        }
+        
         editProfileButton.layer.cornerRadius = 15
-        editProfileButton.addTarget(self, action: #selector(editProfileTapped), for: .touchUpInside)
         
         // Add elements to profile header
         profileHeaderContainer.addSubview(profileImageView)
@@ -191,10 +263,12 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
             editProfileButton.bottomAnchor.constraint(equalTo: profileHeaderContainer.bottomAnchor, constant: -10)
         ])
         
-        // Add tap gesture to profile image
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(profileImageTapped))
-        profileImageView.isUserInteractionEnabled = true
-        profileImageView.addGestureRecognizer(tapGesture)
+        // Add tap gesture to profile image (only for current user)
+        if !isViewingFriend {
+            let tapGesture = UITapGestureRecognizer(target: self, action: #selector(profileImageTapped))
+            profileImageView.isUserInteractionEnabled = true
+            profileImageView.addGestureRecognizer(tapGesture)
+        }
     }
     
     private func setupStatsCard() {
@@ -246,7 +320,6 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
         ])
     }
     
-
     private func setupFriendsCard() {
         friendsCardContainer.translatesAutoresizingMaskIntoConstraints = false
         friendsCardContainer.layer.cornerRadius = 24
@@ -392,6 +465,9 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
         // Save references to these labels so we can update them when data changes
         self.friendsCountLabel = friendsCountLabel
         self.groupsCountLabel = groupsCountLabel
+        
+        print("📌 Friends count label reference created: \(friendsCountLabel)")
+        print("📌 Groups count label reference created: \(groupsCountLabel)")
     }
     
     private func setupAchievementsCard() {
@@ -531,7 +607,7 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
         // About content
         let aboutLabel = UILabel()
         aboutLabel.translatesAutoresizingMaskIntoConstraints = false
-        aboutLabel.text = "HabitCrew helps you build better habits and connect with friends for accountability and support."
+        aboutLabel.text = "HabitCrew helps you build better habits and connect with friends for accountability and support.\n Made with ❤️ by Sanidhya"
         aboutLabel.textColor = .secondaryLabel
         aboutLabel.font = UIFont.systemFont(ofSize: 16)
         aboutLabel.numberOfLines = 0
@@ -858,6 +934,306 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
         return container
     }
     
+    private func setupSharedHabitsCard() {
+        // Only show this card when viewing a friend's profile
+        guard isViewingFriend else { return }
+        
+        let sharedHabitsCardContainer = UIView()
+        sharedHabitsCardContainer.translatesAutoresizingMaskIntoConstraints = false
+        sharedHabitsCardContainer.layer.cornerRadius = 24
+        sharedHabitsCardContainer.layer.masksToBounds = true
+        
+        let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialLight))
+        blurView.translatesAutoresizingMaskIntoConstraints = false
+        blurView.layer.cornerRadius = 24
+        blurView.clipsToBounds = true
+        sharedHabitsCardContainer.addSubview(blurView)
+        
+        contentView.addSubview(sharedHabitsCardContainer)
+        
+        // Title Label
+        let titleLabel = createCardTitleLabel(withText: "Shared Habits")
+        sharedHabitsCardContainer.addSubview(titleLabel)
+        
+        if sharedHabits.isEmpty {
+            // No shared habits message
+            let noHabitsLabel = UILabel()
+            noHabitsLabel.translatesAutoresizingMaskIntoConstraints = false
+            noHabitsLabel.text = "No shared habits yet"
+            noHabitsLabel.font = UIFont.systemFont(ofSize: 16)
+            noHabitsLabel.textColor = .secondaryLabel
+            noHabitsLabel.textAlignment = .center
+            sharedHabitsCardContainer.addSubview(noHabitsLabel)
+            
+            NSLayoutConstraint.activate([
+                noHabitsLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 20),
+                noHabitsLabel.leadingAnchor.constraint(equalTo: sharedHabitsCardContainer.leadingAnchor, constant: 20),
+                noHabitsLabel.trailingAnchor.constraint(equalTo: sharedHabitsCardContainer.trailingAnchor, constant: -20),
+                noHabitsLabel.bottomAnchor.constraint(equalTo: sharedHabitsCardContainer.bottomAnchor, constant: -20)
+            ])
+        } else {
+            // Create a stack view to hold habit rows
+            let habitsStackView = UIStackView()
+            habitsStackView.translatesAutoresizingMaskIntoConstraints = false
+            habitsStackView.axis = .vertical
+            habitsStackView.spacing = 12
+            habitsStackView.distribution = .fillEqually
+            sharedHabitsCardContainer.addSubview(habitsStackView)
+            
+            // Add each habit to the stack view
+            for habit in sharedHabits {
+                let habitView = createSharedHabitView(habit: habit)
+                habitsStackView.addArrangedSubview(habitView)
+            }
+            
+            NSLayoutConstraint.activate([
+                habitsStackView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 16),
+                habitsStackView.leadingAnchor.constraint(equalTo: sharedHabitsCardContainer.leadingAnchor, constant: 20),
+                habitsStackView.trailingAnchor.constraint(equalTo: sharedHabitsCardContainer.trailingAnchor, constant: -20),
+                habitsStackView.bottomAnchor.constraint(equalTo: sharedHabitsCardContainer.bottomAnchor, constant: -16)
+            ])
+        }
+        
+        // Position this card after the Friends card
+        NSLayoutConstraint.activate([
+            sharedHabitsCardContainer.topAnchor.constraint(equalTo: friendsCardContainer.bottomAnchor, constant: 20),
+            sharedHabitsCardContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            sharedHabitsCardContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            
+            blurView.topAnchor.constraint(equalTo: sharedHabitsCardContainer.topAnchor),
+            blurView.leadingAnchor.constraint(equalTo: sharedHabitsCardContainer.leadingAnchor),
+            blurView.trailingAnchor.constraint(equalTo: sharedHabitsCardContainer.trailingAnchor),
+            blurView.bottomAnchor.constraint(equalTo: sharedHabitsCardContainer.bottomAnchor),
+            
+            titleLabel.topAnchor.constraint(equalTo: sharedHabitsCardContainer.topAnchor, constant: 16),
+            titleLabel.leadingAnchor.constraint(equalTo: sharedHabitsCardContainer.leadingAnchor, constant: 20)
+        ])
+        
+        // Set the shared habits card container for later reference
+        self.sharedHabitsCardContainer = sharedHabitsCardContainer
+        
+        // Update the bottom constraint to use this card
+        NSLayoutConstraint.activate([
+            contentView.bottomAnchor.constraint(equalTo: sharedHabitsCardContainer.bottomAnchor, constant: 40)
+        ])
+    }
+    
+    // MARK: - Add association keys for storing habit reference
+    private struct AssociatedKeys {
+        static var habit = "habitReference"
+    }
+    
+    // Helper method to create a shared habit view
+    // MARK: - Update the createSharedHabitView method to add a chevron button and tap functionality
+
+    private func createSharedHabitView(habit: Habit) -> UIView {
+        let habitView = UIView()
+        habitView.translatesAutoresizingMaskIntoConstraints = false
+        habitView.backgroundColor = UIColor(named: habit.colorHex)?.withAlphaComponent(0.15) ?? UIColor.systemBlue.withAlphaComponent(0.15)
+        habitView.layer.cornerRadius = 12
+        
+        // Make the entire view tappable
+        habitView.isUserInteractionEnabled = true
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(sharedHabitTapped(_:)))
+        habitView.addGestureRecognizer(tapGesture)
+        
+        // Store habit reference for the gesture recognizer
+        objc_setAssociatedObject(habitView, &AssociatedKeys.habit, habit, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        
+        // Habit title
+        let titleLabel = UILabel()
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.text = habit.title
+        titleLabel.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        titleLabel.textColor = .label
+        habitView.addSubview(titleLabel)
+        
+        // Add chevron (right arrow)
+        let chevronImageView = UIImageView(image: UIImage(systemName: "chevron.right"))
+        chevronImageView.translatesAutoresizingMaskIntoConstraints = false
+        chevronImageView.tintColor = .tertiaryLabel
+        chevronImageView.contentMode = .scaleAspectFit
+        habitView.addSubview(chevronImageView)
+        
+        // Completion rate
+        let completionRate = calculateHabitCompletionRate(habit)
+        let percentLabel = UILabel()
+        percentLabel.translatesAutoresizingMaskIntoConstraints = false
+        percentLabel.text = "\(Int(completionRate * 100))% complete"
+        percentLabel.font = UIFont.systemFont(ofSize: 14)
+        percentLabel.textColor = .secondaryLabel
+        habitView.addSubview(percentLabel)
+        
+        // Progress bar
+        let progressView = UIProgressView(progressViewStyle: .bar)
+        progressView.translatesAutoresizingMaskIntoConstraints = false
+        progressView.progress = Float(completionRate)
+        progressView.trackTintColor = UIColor.systemGray5
+        progressView.progressTintColor = UIColor(named: habit.colorHex) ?? .systemBlue
+        progressView.layer.cornerRadius = 2
+        progressView.clipsToBounds = true
+        habitView.addSubview(progressView)
+        
+        // Last completed
+        let lastCompletedLabel = UILabel()
+        lastCompletedLabel.translatesAutoresizingMaskIntoConstraints = false
+        if let lastCompletedDate = getLastCompletedDate(habit) {
+            let formatter = RelativeDateTimeFormatter()
+            formatter.unitsStyle = .abbreviated
+            let timeString = formatter.localizedString(for: lastCompletedDate, relativeTo: Date())
+            lastCompletedLabel.text = "Last completed: \(timeString)"
+        } else {
+            lastCompletedLabel.text = "Not completed yet"
+        }
+        lastCompletedLabel.font = UIFont.systemFont(ofSize: 12)
+        lastCompletedLabel.textColor = .tertiaryLabel
+        habitView.addSubview(lastCompletedLabel)
+        
+        NSLayoutConstraint.activate([
+            habitView.heightAnchor.constraint(greaterThanOrEqualToConstant: 80),
+            
+            titleLabel.topAnchor.constraint(equalTo: habitView.topAnchor, constant: 12),
+            titleLabel.leadingAnchor.constraint(equalTo: habitView.leadingAnchor, constant: 12),
+            // Changed constraint to make room for chevron
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: chevronImageView.leadingAnchor, constant: -8),
+            
+            // Chevron constraints
+            chevronImageView.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            chevronImageView.trailingAnchor.constraint(equalTo: habitView.trailingAnchor, constant: -12),
+            chevronImageView.widthAnchor.constraint(equalToConstant: 14),
+            chevronImageView.heightAnchor.constraint(equalToConstant: 14),
+            
+            percentLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 6),
+            percentLabel.leadingAnchor.constraint(equalTo: habitView.leadingAnchor, constant: 12),
+            
+            progressView.topAnchor.constraint(equalTo: percentLabel.bottomAnchor, constant: 8),
+            progressView.leadingAnchor.constraint(equalTo: habitView.leadingAnchor, constant: 12),
+            progressView.trailingAnchor.constraint(equalTo: habitView.trailingAnchor, constant: -12),
+            progressView.heightAnchor.constraint(equalToConstant: 4),
+            
+            lastCompletedLabel.topAnchor.constraint(equalTo: progressView.bottomAnchor, constant: 8),
+            lastCompletedLabel.leadingAnchor.constraint(equalTo: habitView.leadingAnchor, constant: 12),
+            lastCompletedLabel.trailingAnchor.constraint(equalTo: habitView.trailingAnchor, constant: -12),
+            lastCompletedLabel.bottomAnchor.constraint(equalTo: habitView.bottomAnchor, constant: -12)
+        ])
+        
+        return habitView
+    }
+    
+    
+    // MARK: - Helper method to convert Habit to AnalyticsHabit
+
+    // MARK: - Helper method to convert Habit to AnalyticsHabit using your existing struct definition
+    // MARK: - Helper method to convert Habit to AnalyticsHabit using your existing struct definition
+    // MARK: - Helper method to convert Habit to AnalyticsHabit using your existing struct definition
+    private func convertToAnalyticsHabit(habit: Habit) -> AnalyticsHabit {
+        // Convert the completed dates to Date objects
+        let completedDates = habit.doneDates.compactMap { (key, value) -> Date? in
+            guard value else { return nil }
+            return dateFormatter.date(from: key)
+        }
+        
+        // Convert the schedule timestamp to a formatted time string
+        // Since schedule is a non-optional Date, we can format it directly
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        let timeString = formatter.string(from: habit.schedule)
+        
+        // Create the AnalyticsHabit using your existing struct
+        return AnalyticsHabit(
+            title: habit.title,
+            colorHex: habit.colorHex,
+            icon: habit.icon ?? "checkmark.circle.fill", // Use default if nil
+            completedDates: completedDates,
+            daysArray: habit.days,
+            timeString: timeString
+        )
+    }
+    
+    // MARK: - Helper method to calculate streak for a habit
+    private func calculateStreak(for habit: Habit) -> Int {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        var currentStreak = 0
+        
+        // Check backwards from today
+        for i in 0..<30 {
+            guard let date = calendar.date(byAdding: .day, value: -i, to: today) else { continue }
+            let dateString = dateFormatter.string(from: date)
+            
+            // Check if this date was scheduled
+            let dayOfWeek = (calendar.component(.weekday, from: date) + 6) % 7
+            if habit.days.contains(dayOfWeek) {
+                // Check if it was completed
+                if habit.doneDates[dateString] == true {
+                    currentStreak += 1
+                } else if i > 0 { // Allow today to be incomplete
+                    break
+                }
+            }
+        }
+        
+        return currentStreak
+    }
+    
+    
+    // MARK: - Add UIView extension to store habit ID in the view
+
+
+    // MARK: - Add action method for shared habit tap
+    // MARK: - Add action method for shared habit tap
+
+    // MARK: - Add action method for shared habit tap
+    @objc private func sharedHabitTapped(_ sender: UITapGestureRecognizer) {
+        guard let habitView = sender.view else { return }
+        
+        // Retrieve the habit from associated object
+        guard let habit = objc_getAssociatedObject(habitView, &AssociatedKeys.habit) as? Habit,
+              let friend = userProfile else { return }
+        
+        // Convert to AnalyticsHabit for the existing HabitAnalyticsDetailViewController
+        let analyticsHabit = convertToAnalyticsHabit(habit: habit)
+        
+        // Create and navigate to the analytics controller
+        let analyticsVC = HabitAnalyticsDetailViewController(analyticsHabit: analyticsHabit)
+        navigationController?.pushViewController(analyticsVC, animated: true)
+    }
+    
+    
+    // Helper methods for habit calculations
+    private func calculateHabitCompletionRate(_ habit: Habit) -> Double {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        var total = 0
+        var completed = 0
+        
+        for i in 0..<30 {
+            guard let date = calendar.date(byAdding: .day, value: -i, to: today) else { continue }
+            let dayOfWeek = (calendar.component(.weekday, from: date) + 6) % 7
+            
+            if habit.days.contains(dayOfWeek) {
+                total += 1
+                
+                let dateString = dateFormatter.string(from: date)
+                if habit.doneDates[dateString] == true {
+                    completed += 1
+                }
+            }
+        }
+        
+        return total > 0 ? Double(completed) / Double(total) : 0
+    }
+    
+    private func getLastCompletedDate(_ habit: Habit) -> Date? {
+        let completedDates = habit.doneDates.compactMap { (key, value) -> Date? in
+            guard value == true else { return nil }
+            return dateFormatter.date(from: key)
+        }
+        
+        return completedDates.max()
+    }
+    
     // MARK: - Data Fetching Methods
     
     private func fetchUserProfile() {
@@ -879,23 +1255,58 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
     private func fetchUserStats() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         
-        // Get friends count
-        db.collection("users").document(uid).collection("friends")
-            .getDocuments { [weak self] snapshot, _ in
-                self?.friendsCount = snapshot?.documents.count ?? 0
-                DispatchQueue.main.async {
-                    self?.updateStatsUI()
-                }
-            }
+        // Print for debugging
+        print("Fetching user stats for UID: \(uid)")
         
-        // Get groups count
-        db.collection("users").document(uid).collection("groups")
-            .getDocuments { [weak self] snapshot, _ in
-                self?.groupsCount = snapshot?.documents.count ?? 0
-                DispatchQueue.main.async {
-                    self?.updateStatsUI()
+        // Get friends count - with better error handling and debugging
+        let friendsRef = db.collection("users").document(uid).collection("friends")
+        friendsRef.getDocuments { [weak self] snapshot, error in
+            if let error = error {
+                print("⚠️ Error fetching friends: \(error.localizedDescription)")
+                return
+            }
+            
+            let friendCount = snapshot?.documents.count ?? 0
+            print("🔵 Found \(friendCount) friends")
+            
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.friendsCount = friendCount
+                
+                // Direct UI update of the label
+                if let label = self.friendsCountLabel {
+                    print("✅ Updating friends count label to: \(friendCount)")
+                    label.text = "\(friendCount)"
+                } else {
+                    print("⚠️ Friends count label is nil")
                 }
             }
+        }
+        
+        // Get groups count - with better error handling and debugging
+        let groupsRef = db.collection("users").document(uid).collection("groups")
+        groupsRef.getDocuments { [weak self] snapshot, error in
+            if let error = error {
+                print("⚠️ Error fetching groups: \(error.localizedDescription)")
+                return
+            }
+            
+            let groupCount = snapshot?.documents.count ?? 0
+            print("🟢 Found \(groupCount) groups")
+            
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.groupsCount = groupCount
+                
+                // Direct UI update of the label
+                if let label = self.groupsCountLabel {
+                    print("✅ Updating groups count label to: \(groupCount)")
+                    label.text = "\(groupCount)"
+                } else {
+                    print("⚠️ Groups count label is nil")
+                }
+            }
+        }
         
         // Get habits stats
         db.collection("users").document(uid).collection("habits")
@@ -927,7 +1338,7 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
                             totalScheduled += 1
                             
                             let dateString = self.dateFormatter.string(from: date)
-                            let isDone = doneDatesDict[dateString] as? Bool ?? false
+                            let isDone = self.isDoneForDate(doneDatesDict, dateString)
                             
                             if isDone {
                                 totalCompleted += 1
@@ -939,35 +1350,7 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
                 self.completionRate = totalScheduled > 0 ? Float(totalCompleted) / Float(totalScheduled) : 0
                 
                 // Calculate current streak
-                var currentStreak = 0
-                for i in 0..<30 {
-                    let date = calendar.date(byAdding: .day, value: -i, to: today)!
-                    let dateString = self.dateFormatter.string(from: date)
-                    let dayOfWeek = (calendar.component(.weekday, from: date) + 6) % 7
-                    
-                    let scheduledHabitsForDay = habits.filter { habit in
-                        guard let days = habit["days"] as? [Int] else { return false }
-                        return days.contains(dayOfWeek)
-                    }
-                    
-                    if scheduledHabitsForDay.isEmpty {
-                        // No habits scheduled for this day, continue streak
-                        continue
-                    }
-                    
-                    let completedAll = scheduledHabitsForDay.allSatisfy { habit in
-                        let doneDatesDict = habit["doneDates"] as? [String: Any] ?? [:]
-                        return doneDatesDict[dateString] as? Bool ?? false
-                    }
-                    
-                    if completedAll {
-                        currentStreak += 1
-                    } else if i > 0 { // Allow today to be incomplete
-                        break
-                    }
-                }
-                
-                self.currentStreak = currentStreak
+                self.currentStreak = self.calculateStreak(habits: habits)
                 
                 DispatchQueue.main.async {
                     self.updateStatsUI()
@@ -975,15 +1358,202 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
             }
     }
     
+    // Helper method to determine if a habit was done on a specific date
+    private func isDoneForDate(_ doneDatesDict: [String: Any], _ dateString: String) -> Bool {
+        // Check for different possible formats in Firebase
+        if let isDone = doneDatesDict[dateString] as? Bool {
+            return isDone
+        } else if let isDone = doneDatesDict[dateString] as? Int {
+            return isDone != 0
+        } else if let isDone = doneDatesDict[dateString] as? NSNumber {
+            return isDone.boolValue
+        } else if let nestedDict = doneDatesDict[dateString] as? [String: Any],
+                  let isDone = nestedDict["completed"] as? Bool {
+            return isDone
+        }
+        return false
+    }
+    
+    // Calculate streak more reliably
+    private func calculateStreak(habits: [[String: Any]]) -> Int {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        var currentStreak = 0
+        
+        for i in 0..<30 {
+            let date = calendar.date(byAdding: .day, value: -i, to: today)!
+            let dateString = dateFormatter.string(from: date)
+            let dayOfWeek = (calendar.component(.weekday, from: date) + 6) % 7
+            
+            let scheduledHabitsForDay = habits.filter { habit in
+                guard let days = habit["days"] as? [Int] else { return false }
+                return days.contains(dayOfWeek)
+            }
+            
+            if scheduledHabitsForDay.isEmpty {
+                // No habits scheduled for this day, continue streak
+                continue
+            }
+            
+            let completedAll = scheduledHabitsForDay.allSatisfy { habit in
+                let doneDatesDict = habit["doneDates"] as? [String: Any] ?? [:]
+                return isDoneForDate(doneDatesDict, dateString)
+            }
+            
+            if completedAll {
+                currentStreak += 1
+            } else if i > 0 { // Allow today to be incomplete
+                break
+            }
+        }
+        
+        return currentStreak
+    }
+    
+    private func fetchSharedHabitsWithFriend(_ friendId: String) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        
+        db.collection("users").document(currentUserId).collection("habits")
+            .whereField("friend", isEqualTo: friendId)
+            .getDocuments { [weak self] snapshot, error in
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("Error fetching shared habits: \(error.localizedDescription)")
+                    return
+                }
+                
+                self.sharedHabits = snapshot?.documents.compactMap { doc in
+                    let data = doc.data()
+                    return Habit(from: data)
+                } ?? []
+                
+                print("Found \(self.sharedHabits.count) shared habits with friend \(friendId)")
+                
+                DispatchQueue.main.async {
+                    self.habitsCount = self.sharedHabits.count
+                    self.updateStatsUI()
+                    self.setupSharedHabitsCard()
+                }
+            }
+    }
+    
+    private func checkForFriendsData() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        
+        // Check for friends in user document
+        db.collection("users").document(uid).getDocument { [weak self] snapshot, error in
+            if let data = snapshot?.data() {
+                print("🔍 User document data: \(data.keys)")
+                
+                // Check if "friends" is a field in the user document
+                if let friendsData = data["friends"] {
+                    print("💡 Found friends in user document: \(friendsData)")
+                    
+                    // Try to interpret the data
+                    if let friendsArray = friendsData as? [String] {
+                        print("📊 Friends as string array, count: \(friendsArray.count)")
+                        DispatchQueue.main.async {
+                            self?.friendsCount = friendsArray.count
+                            self?.friendsCountLabel?.text = "\(friendsArray.count)"
+                        }
+                    } else if let friendsDict = friendsData as? [String: Any] {
+                        print("📊 Friends as dictionary, count: \(friendsDict.count)")
+                        DispatchQueue.main.async {
+                            self?.friendsCount = friendsDict.count
+                            self?.friendsCountLabel?.text = "\(friendsDict.count)"
+                        }
+                    }
+                }
+                
+                // Check if "groups" is a field in the user document
+                if let groupsData = data["groups"] {
+                    print("💡 Found groups in user document: \(groupsData)")
+                    
+                    // Try to interpret the data
+                    if let groupsArray = groupsData as? [String] {
+                        print("📊 Groups as string array, count: \(groupsArray.count)")
+                        DispatchQueue.main.async {
+                            self?.groupsCount = groupsArray.count
+                            self?.groupsCountLabel?.text = "\(groupsArray.count)"
+                        }
+                    } else if let groupsDict = groupsData as? [String: Any] {
+                        print("📊 Groups as dictionary, count: \(groupsDict.count)")
+                        DispatchQueue.main.async {
+                            self?.groupsCount = groupsDict.count
+                            self?.groupsCountLabel?.text = "\(groupsDict.count)"
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Check root level "friends" collection for this user
+        db.collection("friends").whereField("users", arrayContains: uid)
+            .getDocuments { [weak self] snapshot, error in
+                if let docs = snapshot?.documents, !docs.isEmpty {
+                    print("🌐 Found \(docs.count) friends at root 'friends' collection")
+                    DispatchQueue.main.async {
+                        self?.friendsCount = docs.count
+                        self?.friendsCountLabel?.text = "\(docs.count)"
+                    }
+                }
+            }
+        
+        // Check root level "groups" collection for this user
+        db.collection("groups").whereField("members", arrayContains: uid)
+            .getDocuments { [weak self] snapshot, error in
+                if let docs = snapshot?.documents, !docs.isEmpty {
+                    print("🌐 Found \(docs.count) groups at root 'groups' collection")
+                    DispatchQueue.main.async {
+                        self?.groupsCount = docs.count
+                        self?.groupsCountLabel?.text = "\(docs.count)"
+                    }
+                }
+            }
+        
+        // Double-check friends subcollection explicitly
+        db.collection("users").document(uid).collection("friends")
+            .getDocuments { [weak self] snapshot, error in
+                let count = snapshot?.documents.count ?? 0
+                print("🔄 Double-checking friends subcollection count: \(count)")
+                if count > 0 {
+                    print("📄 Friend documents: \(snapshot?.documents.map { $0.documentID } ?? [])")
+                }
+            }
+    }
+    
+
     private func updateProfileUI() {
         guard let profile = userProfile else { return }
         
         // Update display name and email
         displayNameLabel.text = profile.displayName
-        emailLabel.text = Auth.auth().currentUser?.email
+        
+        if isViewingFriend {
+            // When viewing a friend's profile, show online status instead of email
+            if let isOnline = profile.isOnline, isOnline {
+                emailLabel.text = "Online now"
+                emailLabel.textColor = .systemGreen
+            } else if let lastSeen = profile.lastSeen {
+                let formatter = RelativeDateTimeFormatter()
+                formatter.unitsStyle = .abbreviated
+                let timeString = formatter.localizedString(for: lastSeen, relativeTo: Date())
+                emailLabel.text = "Last seen \(timeString)"
+                emailLabel.textColor = .secondaryLabel
+            } else {
+                emailLabel.text = "Offline"
+                emailLabel.textColor = .secondaryLabel
+            }
+        } else {
+            // For your own profile, show email
+            emailLabel.text = Auth.auth().currentUser?.email
+            emailLabel.textColor = .secondaryLabel
+        }
         
         // Load profile image if available
-        if let photoUrl = Auth.auth().currentUser?.photoURL {
+        if let photoUrl = Auth.auth().currentUser?.photoURL, !isViewingFriend {
+            // For current user, use Auth photoURL
             URLSession.shared.dataTask(with: photoUrl) { [weak self] data, _, _ in
                 if let data = data, let image = UIImage(data: data) {
                     DispatchQueue.main.async {
@@ -997,17 +1567,18 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
                 }
             }.resume()
         } else {
+            // Since UserProfile doesn't have photoURL, always use initials for friends
             setProfileInitials()
         }
     }
     
     private func updateStatsUI() {
-        // Find the stats views and update them with the fetched data
+        // Update Stats card values
         for subview in statsCardContainer.subviews {
             if let stackView = subview as? UIStackView {
                 for (index, view) in stackView.arrangedSubviews.enumerated() {
                     for subview in view.subviews {
-                        if let label = subview as? UILabel, label.font == UIFont.systemFont(ofSize: 28, weight: .bold) {
+                        if let label = subview as? UILabel, label.font.pointSize >= 24 {
                             switch index {
                             case 0: label.text = "\(habitsCount)"
                             case 1: label.text = "\(Int(completionRate * 100))%"
@@ -1020,25 +1591,31 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
             }
         }
         
-        // Update friends card stats
-        for subview in friendsCardContainer.subviews {
-            if let stackView = subview as? UIStackView {
-                for (index, view) in stackView.arrangedSubviews.enumerated() {
-                    for subview in view.subviews {
-                        if let stackView = subview as? UIStackView {
-                            for sv in stackView.arrangedSubviews {
-                                if let label = sv as? UILabel, label.font == UIFont.systemFont(ofSize: 24, weight: .bold) {
-                                    switch index {
-                                    case 0: label.text = "\(friendsCount)"
-                                    case 1: label.text = "\(groupsCount)"
-                                    default: break
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        // Update Friends & Groups counts directly
+        if let friendsCountLabel = self.friendsCountLabel {
+            friendsCountLabel.text = "\(friendsCount)"
+            print("Updated friends count label to: \(friendsCount)")
+        }
+        
+        if let groupsCountLabel = self.groupsCountLabel {
+            groupsCountLabel.text = "\(groupsCount)"
+            print("Updated groups count label to: \(groupsCount)")
+        }
+    }
+    
+    private func refreshFriendsGroupsUI() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Update labels directly
+            self.friendsCountLabel?.text = "\(self.friendsCount)"
+            self.groupsCountLabel?.text = "\(self.groupsCount)"
+            
+            // Force layout update
+            self.view.setNeedsLayout()
+            self.view.layoutIfNeeded()
+            
+            print("🔄 UI Refreshed - Friends: \(self.friendsCount), Groups: \(self.groupsCount)")
         }
     }
     
@@ -1236,6 +1813,22 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
         present(alert, animated: true)
     }
     
+
+    @objc private func messageFriendTapped() {
+        guard let friendProfile = userProfile,
+              let currentUser = Auth.auth().currentUser else { return }
+        
+        // Get current user info to pass as 'me' parameter
+        db.collection("users").document(currentUser.uid).getDocument { [weak self] snapshot, error in
+            guard let self = self, let data = snapshot?.data() else { return }
+            if let myProfile = UserProfile(from: data) {
+                // Now create the chat view controller with both profiles
+                let chatVC = ChatViewController(friend: friendProfile, me: myProfile)
+                self.navigationController?.pushViewController(chatVC, animated: true)
+            }
+        }
+    }
+    
     @objc private func viewFriendsTapped() {
         let friendsVC = FriendsViewController()
         navigationController?.pushViewController(friendsVC, animated: true)
@@ -1265,6 +1858,7 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
                 try Auth.auth().signOut()
                 self?.navigationController?.popViewController(animated: true)
                 self?.dismiss(animated: true)
+                
             } catch {
                 self?.showAlert(title: "Error", message: "Failed to log out: \(error.localizedDescription)")
             }
@@ -1277,5 +1871,24 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
+    }
+}
+
+
+// Add this extension outside the class
+extension UIView {
+    // Use associated objects to add custom property to UIView
+    private struct AssociatedKeys {
+        static var habitId = "habitId"
+    }
+    
+    // Getter and setter for habitId property
+    var habitId: String? {
+        get {
+            return objc_getAssociatedObject(self, &AssociatedKeys.habitId) as? String
+        }
+        set {
+            objc_setAssociatedObject(self, &AssociatedKeys.habitId, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
     }
 }

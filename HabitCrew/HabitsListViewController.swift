@@ -2,6 +2,7 @@ import UIKit
 import FirebaseAuth
 import FirebaseFirestore
 import AVFoundation
+import UserNotifications
 
 enum HabitListTab: Int, CaseIterable {
     case all, today, unchecked, done
@@ -73,15 +74,49 @@ class HabitsListViewController: UIViewController {
         button.setImage(UIImage(systemName: "bell.fill"), for: .normal)
         button.tintColor = .systemGray
         button.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Add badge view
+        let badgeView = UIView()
+        badgeView.backgroundColor = .systemRed
+        badgeView.layer.cornerRadius = 8
+        badgeView.isHidden = true
+        badgeView.translatesAutoresizingMaskIntoConstraints = false
+        badgeView.tag = 999 // Tag for finding it later
+        button.addSubview(badgeView)
+        
+        NSLayoutConstraint.activate([
+            badgeView.topAnchor.constraint(equalTo: button.topAnchor, constant: -2),
+            badgeView.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: 2),
+            badgeView.widthAnchor.constraint(equalToConstant: 16),
+            badgeView.heightAnchor.constraint(equalToConstant: 16)
+        ])
+        
+        // Badge label
+        let badgeLabel = UILabel()
+        badgeLabel.font = UIFont.systemFont(ofSize: 10, weight: .bold)
+        badgeLabel.textColor = .white
+        badgeLabel.textAlignment = .center
+        badgeLabel.translatesAutoresizingMaskIntoConstraints = false
+        badgeLabel.tag = 1000 // Tag for finding it later
+        badgeView.addSubview(badgeLabel)
+        
+        NSLayoutConstraint.activate([
+            badgeLabel.centerXAnchor.constraint(equalTo: badgeView.centerXAnchor),
+            badgeLabel.centerYAnchor.constraint(equalTo: badgeView.centerYAnchor)
+        ])
+        
         return button
     }()
     private let profileButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "person.crop.circle"), for: .normal)
+        button.setImage(UIImage(systemName: "person.crop.circle.fill"), for: .normal)
         button.tintColor = .systemGray
         button.translatesAutoresizingMaskIntoConstraints = false
-        button.layer.cornerRadius = 20
+        button.layer.cornerRadius = 20 // Half of the width/height for circular appearance
         button.clipsToBounds = true
+        button.layer.borderWidth = 1.5 // Add a subtle border
+        button.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.2).cgColor
+        button.contentMode = .scaleAspectFill // Ensure the image fills the button
         return button
     }()
 
@@ -186,6 +221,16 @@ class HabitsListViewController: UIViewController {
         table.rowHeight = 116
         return table
     }()
+    
+    // Date & time label
+    private let currentDateTimeLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 15, weight: .medium)
+        label.textColor = .secondaryLabel
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -197,9 +242,28 @@ class HabitsListViewController: UIViewController {
         fetchUserMotivation()
         listenForHabits()
         populateProfile()
+        
+        // Setup notification center delegate
+        UNUserNotificationCenter.current().delegate = self
+        
+        // Update notification badge
+        updateNotificationBadge()
+        
+        
+        // Setup notification button action
+        notificationButton.addTarget(self, action: #selector(notificationButtonTapped), for: .touchUpInside)
+    }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // Update notification badge every time the view appears
+        updateNotificationBadge()
+
     }
 
     deinit { habitsListener?.remove() }
+    
+    
 
     private func setupGradientBackground() {
         // Subtle blue-gradient background, no blobs
@@ -229,14 +293,16 @@ class HabitsListViewController: UIViewController {
             addHabitButton.leadingAnchor.constraint(equalTo: topBar.leadingAnchor, constant: 10),
             addHabitButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
             addHabitButton.heightAnchor.constraint(equalToConstant: 34),
-            notificationButton.trailingAnchor.constraint(equalTo: profileButton.leadingAnchor, constant: -4),
+            notificationButton.trailingAnchor.constraint(equalTo: profileButton.leadingAnchor, constant: -8), // Increased spacing
             notificationButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
             notificationButton.widthAnchor.constraint(equalToConstant: 32),
             notificationButton.heightAnchor.constraint(equalToConstant: 32),
+            
+            // Update profile button size to 40x40
             profileButton.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: -10),
             profileButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
-            profileButton.widthAnchor.constraint(equalToConstant: 32),
-            profileButton.heightAnchor.constraint(equalToConstant: 32),
+            profileButton.widthAnchor.constraint(equalToConstant: 40), // Increased from 32
+            profileButton.heightAnchor.constraint(equalToConstant: 40), // Increased from 32
         ])
         addHabitButton.addTarget(self, action: #selector(addHabitTapped), for: .touchUpInside)
         profileButton.addTarget(self, action: #selector(profileButtonTapped), for: .touchUpInside)
@@ -319,9 +385,18 @@ class HabitsListViewController: UIViewController {
             URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
                 guard let data = data, let image = UIImage(data: data) else { return }
                 DispatchQueue.main.async {
-                    self?.profileButton.setImage(image.withRenderingMode(.alwaysOriginal), for: .normal)
+                    // Configure the button to properly display the image
+                    self?.profileButton.setBackgroundImage(image, for: .normal)
+                    self?.profileButton.setImage(nil, for: .normal) // Clear any existing image
+                    self?.profileButton.imageView?.contentMode = .scaleAspectFill
                 }
             }.resume()
+        } else {
+            // Fallback to a default profile icon if no image is available
+            DispatchQueue.main.async {
+                self.profileButton.setImage(UIImage(systemName: "person.crop.circle.fill"), for: .normal)
+                self.profileButton.tintColor = .systemGray
+            }
         }
     }
 
@@ -383,6 +458,40 @@ class HabitsListViewController: UIViewController {
         let profileVC = ProfileViewController()
         navigationController?.pushViewController(profileVC, animated: true)
     }
+    
+    @objc private func notificationButtonTapped() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let notificationsVC = NotificationsViewController()
+        navigationController?.pushViewController(notificationsVC, animated: true)
+    }
+    
+    // Update notification badge
+    private func updateNotificationBadge() {
+        NotificationManager.shared.getNotificationBadgeCount { [weak self] count in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                if let badgeView = self.notificationButton.viewWithTag(999),
+                   let badgeLabel = badgeView.viewWithTag(1000) as? UILabel {
+                    
+                    if count > 0 {
+                        badgeView.isHidden = false
+                        badgeLabel.text = count > 9 ? "9+" : "\(count)"
+                        
+                        // Animate the badge appearing if it was hidden
+                        if badgeView.transform == CGAffineTransform(scaleX: 0.1, y: 0.1) {
+                            UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 0.5, options: [], animations: {
+                                badgeView.transform = .identity
+                            })
+                        }
+                    } else {
+                        badgeView.isHidden = true
+                        badgeView.transform = CGAffineTransform(scaleX: 0.1, y: 0.1)
+                    }
+                }
+            }
+        }
+    }
 
     // MARK: - FIRESTORE SYNC
 
@@ -400,17 +509,27 @@ class HabitsListViewController: UIViewController {
                 guard let documents = snapshot?.documents else { return }
                 self.habits = documents.compactMap { doc in Habit(from: doc.data()) }
                 self.filterHabitsAndReload()
+                
+                // Schedule notifications for habits
+                for habit in self.habits {
+                    NotificationManager.shared.scheduleHabitNotification(for: habit)
+                }
             }
     }
+    
     private func saveHabitToFirestore(_ habit: Habit) {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let ref = db.collection("users").document(uid).collection("habits").document(habit.id)
         ref.setData(habit.dictionary) { error in
             if let error = error {
                 print("Failed to save habit: \(error)")
+            } else {
+                // Schedule notification for this habit
+                NotificationManager.shared.scheduleHabitNotification(for: habit)
             }
         }
     }
+    
     private func filterHabitsAndReload() {
         let calendar = Calendar.current
         let today = Date()
@@ -427,6 +546,7 @@ class HabitsListViewController: UIViewController {
         }
         tableView.reloadData()
     }
+    
     func markHabitToggleDoneForToday(_ habit: Habit) {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         var updatedHabit = habit
@@ -436,17 +556,23 @@ class HabitsListViewController: UIViewController {
         db.collection("users").document(uid).collection("habits").document(habit.id)
             .setData(updatedHabit.dictionary, merge: true)
     }
+    
     func showHabitDetails(_ habit: Habit) {
         let detailsVC = HabitDetailViewController(habit: habit)
         navigationController?.pushViewController(detailsVC, animated: true)
     }
+    
     private func editHabit(_ habit: Habit) {
         let addVC = AddHabitViewController(habitToEdit: habit)
         addVC.delegate = self
         navigationController?.pushViewController(addVC, animated: true)
     }
+    
     private func deleteHabit(_ habit: Habit) {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        // Cancel scheduled notifications
+        NotificationManager.shared.cancelNotification(for: habit.id)
+        // Delete from Firestore
         db.collection("users").document(uid).collection("habits").document(habit.id).delete()
     }
 }
@@ -612,6 +738,59 @@ extension HabitsListViewController: AddHabitViewControllerDelegate {
     }
 }
 
+// MARK: - Notification Delegate
+extension HabitsListViewController: UNUserNotificationCenterDelegate {
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        // Store notification in Firestore
+        NotificationManager.shared.storeNotification(notification)
+        
+        // Update badge count
+        updateNotificationBadge()
+        
+        // Show the notification even when app is in foreground
+        completionHandler([.banner, .sound, .badge])
+    }
+    
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        // Store notification in Firestore
+        NotificationManager.shared.storeNotification(response.notification)
+        
+        // Handle notification tap
+        let userInfo = response.notification.request.content.userInfo
+        
+        if let habitId = userInfo["habitId"] as? String {
+            // Find the habit and navigate to its detail
+            guard let uid = Auth.auth().currentUser?.uid else {
+                completionHandler()
+                return
+            }
+            
+            db.collection("users").document(uid).collection("habits").document(habitId).getDocument { [weak self] (document, error) in
+                guard let self = self, let document = document, document.exists,
+                      let habitData = document.data(),
+                      let habit = Habit(from: habitData) else {
+                    completionHandler()
+                    return
+                }
+                
+                // Navigate to habit detail
+                DispatchQueue.main.async {
+                    let detailVC = HabitDetailViewController(habit: habit)
+                    self.navigationController?.pushViewController(detailVC, animated: true)
+                }
+                
+                completionHandler()
+            }
+        } else {
+            completionHandler()
+        }
+    }
+}
+
 // MARK: - Apple-style Habit Card Cell (without icon)
 
 class HabitCardCell: UITableViewCell {
@@ -768,14 +947,14 @@ class HabitCardCell: UITableViewCell {
 }
 
 // MARK: - UIColor hex string convenience
-private extension UIColor {
-    convenience init?(hex: String) {
-        var hexSanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
-        hexSanitized = hexSanitized.replacingOccurrences(of: "#", with: "")
+extension UIColor {
+    convenience init?(hex: String?) {
+        guard let hexSanitized = hex?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+        let hexString = hexSanitized.replacingOccurrences(of: "#", with: "")
         var rgb: UInt64 = 0
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0
-        let length = hexSanitized.count
-        guard Scanner(string: hexSanitized).scanHexInt64(&rgb) else { return nil }
+        let length = hexString.count
+        guard Scanner(string: hexString).scanHexInt64(&rgb) else { return nil }
         if length == 6 {
             r = CGFloat((rgb & 0xFF0000) >> 16) / 255.0
             g = CGFloat((rgb & 0x00FF00) >> 8) / 255.0
@@ -786,3 +965,5 @@ private extension UIColor {
         self.init(red: r, green: g, blue: b, alpha: 1)
     }
 }
+
+
