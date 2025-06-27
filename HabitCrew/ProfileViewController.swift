@@ -607,7 +607,7 @@ class ProfileViewController: UIViewController, UIImagePickerControllerDelegate, 
         // About content
         let aboutLabel = UILabel()
         aboutLabel.translatesAutoresizingMaskIntoConstraints = false
-        aboutLabel.text = "HabitCrew helps you build better habits and connect with friends for accountability and support.\n Made with ❤️ by Sanidhya"
+        aboutLabel.text = "HabitCrew helps you build better habits and connect with friends for accountability and support.\nMade with ❤️ by Sanidhya\nlinkedin.com/in/ssanidhya0407"
         aboutLabel.textColor = .secondaryLabel
         aboutLabel.font = UIFont.systemFont(ofSize: 16)
         aboutLabel.numberOfLines = 0
